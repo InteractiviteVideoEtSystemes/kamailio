@@ -20,7 +20,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
 
@@ -61,6 +61,10 @@ char *filename = NULL;
 /* Path to an arbitrary directory where the Kamailio Perl modules are
  * installed */
 char *modpath = NULL;
+
+/* Function to be called before perl interpreter instance is destroyed
+ * when attempting reinit */
+static char *perl_destroy_func = NULL;
 
 /* Allow unsafe module functions - functions with fixups. This will create
  * memory leaks, the variable thus is not documented! */
@@ -124,10 +128,11 @@ static cmd_export_t cmds[] = {
  * Exported parameters
  */
 static param_export_t params[] = {
-	{"filename", STR_PARAM, &filename},
-	{"modpath", STR_PARAM, &modpath},
+	{"filename", PARAM_STRING, &filename},
+	{"modpath", PARAM_STRING, &modpath},
 	{"unsafemodfnc", INT_PARAM, &unsafemodfnc},
 	{"reset_cycles", INT_PARAM, &_ap_reset_cycles_init},
+	{"perl_destroy_func",  PARAM_STRING, &perl_destroy_func},
 	{ 0, 0, 0 }
 };
 
@@ -162,7 +167,7 @@ static mi_export_t mi_cmds[] = {
 /*
  * Module interface
  */
-struct module_exports exports = {
+struct module_exports _app_perl_exports = {
 	"app_perl", 
 	RTLD_NOW | RTLD_GLOBAL,
 	cmds,       /* Exported functions */
@@ -209,6 +214,7 @@ PerlInterpreter *parser_init(void) {
 	int modpathset_start = 0;
 	int modpathset_end = 0;
 	int i;
+	int pr;
 
 	new_perl = perl_alloc();
 
@@ -235,6 +241,10 @@ PerlInterpreter *parser_init(void) {
 				} else {
 					LM_INFO("setting lib path: '%s'\n", entry);
 					argv[argc] = pkg_malloc(strlen(entry)+20);
+					if (!argv[argc]) {
+						LM_ERR("not enough pkg mem\n");
+						return NULL;
+					}
 					sprintf(argv[argc], "-I%s", entry);
 					modpathset_end = argc;
 					argc++;
@@ -249,8 +259,9 @@ PerlInterpreter *parser_init(void) {
 	argv[argc] = filename; /* The script itself */
 	argc++;
 
-	if (perl_parse(new_perl, xs_init, argc, argv, NULL)) {
-		LM_ERR("failed to load perl file \"%s\".\n", argv[argc-1]);
+	pr=perl_parse(new_perl, xs_init, argc, argv, NULL);
+	if (pr) {
+		LM_ERR("failed to load perl file \"%s\" with code %d.\n", argv[argc-1], pr);
 		if (modpathset_start) {
 			for (i = modpathset_start; i <= modpathset_end; i++) {
 				pkg_free(argv[i]);
@@ -340,7 +351,7 @@ static int mod_init(void) {
 	struct timeval t1;
 	struct timeval t2;
 
-	if(register_mi_mod(exports.name, mi_cmds)!=0)
+	if(register_mi_mod(_app_perl_exports.name, mi_cmds)!=0)
 	{
 		LM_ERR("failed to register MI commands\n");
 		return -1;
@@ -424,6 +435,7 @@ int app_perl_reset_interpreter(void)
 {
 	struct timeval t1;
 	struct timeval t2;
+	char *args[] = { NULL };
 
 	if(*_ap_reset_cycles==0)
 		return 0;
@@ -434,6 +446,9 @@ int app_perl_reset_interpreter(void)
 
 	if(_ap_exec_cycles<=*_ap_reset_cycles)
 		return 0;
+
+	if(perl_destroy_func)
+		call_argv(perl_destroy_func, G_DISCARD | G_NOARGS, args);
 
 	gettimeofday(&t1, NULL);
 	if (perl_reload()<0) {

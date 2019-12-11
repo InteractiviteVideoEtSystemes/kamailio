@@ -15,11 +15,8 @@
  *
  * You should have received a copy of the GNU General Public License 
  * along with this program; if not, write to the Free Software 
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
- * History:
- * --------
- *  2006-08-15  initial version (Anca Vamanu)
  */
 
 /*!
@@ -73,6 +70,7 @@ void msg_presentity_clean(unsigned int ticks,void *param)
 	int i = 0, num_watchers = 0;
 	presentity_t pres;
 	str uri = {0, 0}, event, *rules_doc = NULL;
+	static str query_str;
 
 	LM_DBG("cleaning expired presentity information\n");
 	if (pa_dbf.use_table(pa_db, &presentity_table) < 0) 
@@ -100,7 +98,7 @@ void msg_presentity_clean(unsigned int ticks,void *param)
 	result_cols[etag_col=n_result_cols++] = &str_etag_col;
 	result_cols[event_col=n_result_cols++] = &str_event_col;
 
-	static str query_str = str_init("username");
+	query_str = str_username_col;
 	if (db_fetch_query(&pa_dbf, pres_fetch_rows, pa_db, db_keys, db_ops,
 				db_vals, result_cols, n_db_cols, n_result_cols,
 				&query_str, &result) < 0)
@@ -134,7 +132,7 @@ void msg_presentity_clean(unsigned int ticks,void *param)
 			event.s = (char *) VAL_STRING(&values[event_col]);
 			event.len = strlen(event.s);
 			pres.event= contains_event(&event, NULL);
-			if(pres.event== NULL)
+			if(pres.event==NULL || pres.event->evp==NULL)
 			{
 				LM_ERR("event not found\n");
 				goto error;
@@ -147,7 +145,7 @@ void msg_presentity_clean(unsigned int ticks,void *param)
 			}
 		
 			/* delete from hash table */
-			if(publ_cache_enabled && delete_phtable(&uri, pres.event->type)< 0)
+			if(publ_cache_enabled && delete_phtable(&uri, pres.event->evp->type)< 0)
 			{
 				LM_ERR("deleting from pres hash table\n");
 				goto error;
@@ -158,9 +156,22 @@ void msg_presentity_clean(unsigned int ticks,void *param)
 
 			if (pres_notifier_processes > 0)
 			{
+				if (pa_dbf.start_transaction)
+				{
+					if (pa_dbf.start_transaction(pa_db, db_table_lock) < 0)
+					{
+						LM_ERR("in start_transaction\n");
+						goto error;
+					}
+				}
 				if ((num_watchers = publ_notify_notifier(uri, pres.event)) < 0)
 				{
 					LM_ERR("Updating watcher records\n");
+					if (pa_dbf.abort_transaction)
+					{
+						if (pa_dbf.abort_transaction(pa_db) < 0)
+							LM_ERR("in abort_transaction\n");
+					}
 					goto error;
 				}
 
@@ -169,6 +180,11 @@ void msg_presentity_clean(unsigned int ticks,void *param)
 					if (mark_presentity_for_delete(&pres) < 0)
 					{
 						LM_ERR("Marking presentity\n");
+						if (pa_dbf.abort_transaction)
+						{
+							if (pa_dbf.abort_transaction(pa_db) < 0)
+								LM_ERR("in abort_transaction\n");
+						}
 						goto error;
 					}
 				}
@@ -177,6 +193,14 @@ void msg_presentity_clean(unsigned int ticks,void *param)
 					if (delete_presentity(&pres) < 0)
 					{
 						LM_ERR("Deleting presentity\n");
+						goto error;
+					}
+				}
+				if (pa_dbf.end_transaction)
+				{
+					if (pa_dbf.end_transaction(pa_db) < 0)
+					{
+						LM_ERR("in end_transaction\n");
 						goto error;
 					}
 				}
@@ -511,7 +535,7 @@ error:
 int update_hard_presentity(str *pres_uri, pres_ev_t *event, str *file_uri, str *filename)
 {
 	int ret = -1, new_t, pidf_result;
-	str *pidf_doc;
+	str *pidf_doc = 0;
 	char *sphere = NULL;
 	presentity_t *pres = NULL;
 	struct sip_uri parsed_uri;

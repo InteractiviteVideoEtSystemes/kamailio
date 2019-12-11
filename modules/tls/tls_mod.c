@@ -1,7 +1,7 @@
 /*
  * TLS module
  *
- * Copyright (C) 2007 iptelorg GmbH 
+ * Copyright (C) 2007 iptelorg GmbH
  * Copyright (C) Motorola Solutions, Inc.
  *
  * Permission to use, copy, modify, and distribute this software for any
@@ -17,7 +17,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-/** SIP-router TLS support :: Module interface.
+/** Kamailio TLS support :: Module interface.
  * @file
  * @ingroup tls
  * Module: @ref tls
@@ -57,8 +57,6 @@
 	#error "conflict: CORE_TLS must _not_ be defined"
 #endif
 
-
-
 /*
  * FIXME:
  * - How do we ask for secret key password ? Mod_init is called after
@@ -84,8 +82,9 @@ static int is_peer_verified(struct sip_msg* msg, char* foo, char* foo2);
 MODULE_VERSION
 
 
+str sr_tls_xavp_cfg = {0, 0};
 /*
- * Default settings when modparams are used 
+ * Default settings when modparams are used
  */
 static tls_domain_t mod_params = {
 	TLS_DOMAIN_DEF | TLS_DOMAIN_SRV,   /* Domain Type */
@@ -101,6 +100,8 @@ static tls_domain_t mod_params = {
 	{0, },                /* Cipher list */
 	TLS_USE_TLSv1,    /* TLS method */
 	STR_STATIC_INIT(TLS_CRL_FILE), /* Certificate revocation list */
+	{0, 0},           /* Server name (SNI) */
+	{0, 0},           /* Server id */
 	0                 /* next */
 };
 
@@ -122,6 +123,8 @@ tls_domain_t srv_defaults = {
 	{0, 0},                /* Cipher list */
 	TLS_USE_TLSv1,    /* TLS method */
 	STR_STATIC_INIT(TLS_CRL_FILE), /* Certificate revocation list */
+	{0, 0},           /* Server name (SNI) */
+	{0, 0},           /* Server id */
 	0                 /* next */
 };
 
@@ -143,6 +146,8 @@ tls_domain_t cli_defaults = {
 	{0, 0},                /* Cipher list */
 	TLS_USE_TLSv1,    /* TLS method */
 	{0, 0}, /* Certificate revocation list */
+	{0, 0},           /* Server name (SNI) */
+	{0, 0},           /* Server id */
 	0                 /* next */
 };
 
@@ -172,6 +177,7 @@ static cmd_export_t cmds[] = {
  */
 static param_export_t params[] = {
 	{"tls_method",          PARAM_STR,    &default_tls_cfg.method       },
+	{"server_name",         PARAM_STR,    &default_tls_cfg.server_name  },
 	{"verify_certificate",  PARAM_INT,    &default_tls_cfg.verify_cert  },
 	{"verify_depth",        PARAM_INT,    &default_tls_cfg.verify_depth },
 	{"require_certificate", PARAM_INT,    &default_tls_cfg.require_cert },
@@ -187,11 +193,11 @@ static param_export_t params[] = {
 	{"session_id",          PARAM_STR,    &default_tls_cfg.session_id   },
 	{"config",              PARAM_STR,    &default_tls_cfg.config_file  },
 	{"tls_disable_compression", PARAM_INT,
-										 &default_tls_cfg.disable_compression},
+										&default_tls_cfg.disable_compression},
 	{"ssl_release_buffers",   PARAM_INT, &default_tls_cfg.ssl_release_buffers},
 	{"ssl_freelist_max_len",  PARAM_INT,  &default_tls_cfg.ssl_freelist_max},
 	{"ssl_max_send_fragment", PARAM_INT,
-									   &default_tls_cfg.ssl_max_send_fragment},
+										&default_tls_cfg.ssl_max_send_fragment},
 	{"ssl_read_ahead",        PARAM_INT,    &default_tls_cfg.ssl_read_ahead},
 	{"send_close_notify",   PARAM_INT,    &default_tls_cfg.send_close_notify},
 	{"con_ct_wq_max",      PARAM_INT,    &default_tls_cfg.con_ct_wq_max},
@@ -201,6 +207,7 @@ static param_export_t params[] = {
 	{"low_mem_threshold1",  PARAM_INT,    &default_tls_cfg.low_mem_threshold1},
 	{"low_mem_threshold2",  PARAM_INT,    &default_tls_cfg.low_mem_threshold2},
 	{"renegotiation",       PARAM_INT,    &sr_tls_renegotiation},
+	{"xavp_cfg",            PARAM_STR,    &sr_tls_xavp_cfg},
 	{0, 0, 0}
 };
 
@@ -233,7 +240,8 @@ static struct tls_hooks tls_h = {
 	tls_h_close,
 	tls_h_init_si,
 	init_tls_h,
-	destroy_tls_h
+	destroy_tls_h,
+	tls_mod_pre_init_h,
 };
 
 
@@ -245,22 +253,31 @@ static struct tls_hooks tls_h = {
 static tls_domains_cfg_t* tls_use_modparams(void)
 {
 	tls_domains_cfg_t* ret;
-	
+
 	ret = tls_new_cfg();
 	if (!ret) return;
 
-	
+
 }
 #endif
 
 int mod_register(char *path, int *dlflags, void *p1, void *p2)
 {
+	if (tls_disable) {
+		LOG(L_WARN, "tls support is disabled "
+				"(set enable_tls=1 in the config to enable it)\n");
+		return 0;
+	}
+
 	/* shm is used, be sure it is initialized */
 	if(!shm_initialized() && init_shm()<0)
 		return -1;
 
 	if(tls_pre_init()<0)
 		return -1;
+
+	register_tls_hooks(&tls_h);
+
 	return 0;
 }
 
@@ -269,7 +286,7 @@ static int mod_init(void)
 	int method;
 
 	if (tls_disable){
-		LOG(L_WARN, "WARNING: tls: mod_init: tls support is disabled "
+		LOG(L_WARN, "tls support is disabled "
 				"(set enable_tls=1 in the config to enable it)\n");
 		return 0;
 	}
@@ -299,6 +316,7 @@ static int mod_init(void)
 	mod_params.crl_file = cfg_get(tls, tls_cfg, crl);
 	mod_params.cert_file = cfg_get(tls, tls_cfg, certificate);
 	mod_params.cipher_list = cfg_get(tls, tls_cfg, cipher_list);
+	mod_params.server_name = cfg_get(tls, tls_cfg, server_name);
 
 	tls_domains_cfg =
 			(tls_domains_cfg_t**)shm_malloc(sizeof(tls_domains_cfg_t*));
@@ -308,7 +326,6 @@ static int mod_init(void)
 	}
 	*tls_domains_cfg = NULL;
 
-	register_tls_hooks(&tls_h);
 	register_select_table(tls_sel);
 	/* register the rpc interface */
 	if (rpc_register_array(tls_rpc)!=0) {
@@ -316,8 +333,8 @@ static int mod_init(void)
 		goto error;
 	}
 
-	 /* if (init_tls() < 0) return -1; */
-	
+	/* if (init_tls() < 0) return -1; */
+
 	tls_domains_cfg_lock = lock_alloc();
 	if (tls_domains_cfg_lock == 0) {
 		ERR("Unable to create TLS configuration lock\n");
@@ -333,7 +350,7 @@ static int mod_init(void)
 		goto error;
 	}
 	if (cfg_get(tls, tls_cfg, config_file).s) {
-		*tls_domains_cfg = 
+		*tls_domains_cfg =
 			tls_load_config(&cfg_get(tls, tls_cfg, config_file));
 		if (!(*tls_domains_cfg)) goto error;
 	} else {
@@ -344,6 +361,13 @@ static int mod_init(void)
 	if (tls_check_sockets(*tls_domains_cfg) < 0)
 		goto error;
 
+#ifndef OPENSSL_NO_ECDH
+	LM_INFO("With ECDH-Support!\n");
+#endif
+#ifndef OPENSSL_NO_DH
+	LM_INFO("With Diffie Hellman\n");
+#endif
+	tls_lookup_event_routes();
 	return 0;
 error:
 	destroy_tls_h();
@@ -355,7 +379,7 @@ static int mod_child(int rank)
 {
 	if (tls_disable || (tls_domains_cfg==0))
 		return 0;
-	/* fix tls config only from the main proc/PROC_INIT., when we know 
+	/* fix tls config only from the main proc/PROC_INIT., when we know
 	 * the exact process number and before any other process starts*/
 	if (rank == PROC_INIT){
 		if (cfg_get(tls, tls_cfg, config_file).s){
@@ -375,7 +399,7 @@ static int mod_child(int rank)
 static void destroy(void)
 {
 	/* tls is destroyed via the registered destroy_tls_h callback
-	   => nothing to do here */
+	 *   => nothing to do here */
 }
 
 
@@ -396,7 +420,12 @@ static int is_peer_verified(struct sip_msg* msg, char* foo, char* foo2)
 
 	c = tcpconn_get(msg->rcv.proto_reserved1, 0, 0, 0,
 					cfg_get(tls, tls_cfg, con_lifetime));
-	if (c && c->type != PROTO_TLS) {
+	if (!c) {
+		ERR("connection no longer exits\n");
+		return -1;
+	}
+
+	if(c->type != PROTO_TLS) {
 		ERR("Connection found but is not TLS\n");
 		tcpconn_put(c);
 		return -1;

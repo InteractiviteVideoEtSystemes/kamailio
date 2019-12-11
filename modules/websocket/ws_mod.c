@@ -1,6 +1,4 @@
 /*
- * $Id$
- *
  * Copyright (C) 2012-2013 Crocodile RCS Ltd
  *
  * This file is part of Kamailio, a free SIP server.
@@ -91,7 +89,7 @@ static param_export_t params[]=
 	/* ws_frame.c */
 	{ "keepalive_mechanism",	INT_PARAM, &ws_keepalive_mechanism },
 	{ "keepalive_timeout",		INT_PARAM, &ws_keepalive_timeout },
-	{ "ping_application_data",	STR_PARAM, &ws_ping_application_data.s },
+	{ "ping_application_data",	PARAM_STR, &ws_ping_application_data },
 
 	/* ws_handshake.c */
 	{ "sub_protocols",		INT_PARAM, &ws_sub_protocols },
@@ -110,9 +108,9 @@ static stat_export_t stats[] =
 	{ "ws_current_connections",            0, &ws_current_connections },
 	{ "ws_max_concurrent_connections",     0, &ws_max_concurrent_connections },
 	{ "ws_sip_current_connections",        0, &ws_sip_current_connections },
-        { "ws_sip_max_concurrent_connectons",  0, &ws_sip_max_concurrent_connections },
-        { "ws_msrp_current_connections",       0, &ws_msrp_current_connections },
-        { "ws_msrp_max_concurrent_connectons", 0, &ws_msrp_max_concurrent_connections },
+	{ "ws_sip_max_concurrent_connections", 0, &ws_sip_max_concurrent_connections },
+	{ "ws_msrp_current_connections",       0, &ws_msrp_current_connections },
+	{ "ws_msrp_max_concurrent_connections", 0, &ws_msrp_max_concurrent_connections },
 
 	/* ws_frame.c */
 	{ "ws_failed_connections",             0, &ws_failed_connections },
@@ -136,6 +134,10 @@ static stat_export_t stats[] =
 	{ "ws_successful_handshakes",          0, &ws_successful_handshakes },
 	{ "ws_sip_successful_handshakes",      0, &ws_sip_successful_handshakes },
 	{ "ws_msrp_successful_handshakes",     0, &ws_msrp_successful_handshakes },
+
+	/* legacy typo's, fixed in 4.4 */
+	{ "ws_sip_max_concurrent_connectons",  0, &ws_sip_max_concurrent_connections },
+	{ "ws_msrp_max_concurrent_connectons", 0, &ws_msrp_max_concurrent_connections },
 
 	{ 0, 0, 0 }
 };
@@ -211,9 +213,6 @@ static int mod_init(void)
 		goto error;
 	}
 
-	if (ws_ping_application_data.s != 0)
-		ws_ping_application_data.len =
-					strlen(ws_ping_application_data.s);
 	if (ws_ping_application_data.len < 1
 		|| ws_ping_application_data.len > 125)
 	{

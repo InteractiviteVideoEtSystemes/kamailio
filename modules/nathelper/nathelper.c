@@ -2066,6 +2066,8 @@ nh_timer(unsigned int ticks, void *timer_idx)
 	int rval;
 	void *buf, *cp;
 	str c;
+	str recv;
+	str *dst_uri;
 	str opt;
 	str path;
 	str ruid;
@@ -2123,26 +2125,33 @@ nh_timer(unsigned int ticks, void *timer_idx)
 
 	cp = buf;
 	while (1) {
-		memcpy(&(c.len), cp, sizeof(c.len));
-		if (c.len == 0)
-			break;
-		c.s = (char*)cp + sizeof(c.len);
-		cp =  (char*)cp + sizeof(c.len) + c.len;
-		memcpy( &send_sock, cp, sizeof(send_sock));
-		cp = (char*)cp + sizeof(send_sock);
-		memcpy( &flags, cp, sizeof(flags));
-		cp = (char*)cp + sizeof(flags);
-		memcpy( &(path.len), cp, sizeof(path.len));
-		path.s = path.len ? ((char*)cp + sizeof(path.len)) : NULL ;
-		cp =  (char*)cp + sizeof(path.len) + path.len;
-		memcpy( &(ruid.len), cp, sizeof(ruid.len));
-		ruid.s = ruid.len ? ((char*)cp + sizeof(ruid.len)) : NULL ;
-		cp =  (char*)cp + sizeof(ruid.len) + ruid.len;
-		memcpy( &aorhash, cp, sizeof(aorhash));
-		cp = (char*)cp + sizeof(aorhash);
+                memcpy(&(c.len), cp, sizeof(c.len));
+                if (c.len == 0)
+                        break;
+                c.s = (char*)cp + sizeof(c.len);
+                cp =  (char*)cp + sizeof(c.len) + c.len;
+                memcpy(&(recv.len), cp, sizeof(recv.len));
+                recv.s = (char*)cp + sizeof(recv.len);
+                cp =  (char*)cp + sizeof(recv.len) + recv.len;
+                memcpy( &send_sock, cp, sizeof(send_sock));
+                cp = (char*)cp + sizeof(send_sock);
+                memcpy( &flags, cp, sizeof(flags));
+                cp = (char*)cp + sizeof(flags);
+                memcpy( &(path.len), cp, sizeof(path.len));
+                path.s = path.len ? ((char*)cp + sizeof(path.len)) : NULL ;
+                cp =  (char*)cp + sizeof(path.len) + path.len;
+                memcpy( &(ruid.len), cp, sizeof(ruid.len));
+                ruid.s = ruid.len ? ((char*)cp + sizeof(ruid.len)) : NULL ;
+                cp =  (char*)cp + sizeof(ruid.len) + ruid.len;
+                memcpy( &aorhash, cp, sizeof(aorhash));
+                cp = (char*)cp + sizeof(aorhash);
+
 
 		if ((flags & natping_disable_flag)) /* always 0 if natping_disable_flag not set */
 			continue;
+
+                if(recv.len>0) dst_uri = &recv;
+                else dst_uri = &c;
 
 		/* determin the destination */
 		if ( path.len && (flags&sipping_flag)!=0 ) {

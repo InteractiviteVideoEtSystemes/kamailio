@@ -1,6 +1,4 @@
 /*
- * $Id: hash.c 2583 2007-08-08 11:33:25Z anca_vamanu $
- *
  * presence module - presence server implementation
  *
  * Copyright (C) 2007 Voice Sistem S.R.L.
@@ -19,11 +17,8 @@
  *
  * You should have received a copy of the GNU General Public License 
  * along with this program; if not, write to the Free Software 
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
- * History:
- * --------
- *  2007-08-20  initial version (Anca Vamanu)
  */
 
 /*! \file
@@ -42,6 +37,13 @@
 #include "hash.h"
 #include "notify.h"
 
+/* matching mode when removing subscriptions from memory */
+extern int pres_subs_remove_match;
+
+/**
+ * create the subscription hash table in shared memory
+ * - hash_size: number of slots
+ */
 shtable_t new_shtable(int hash_size)
 {
 	shtable_t htable= NULL;
@@ -99,6 +101,7 @@ void destroy_shtable(shtable_t htable, int hash_size)
 		lock_destroy(&htable[i].lock);
 		free_subs_list(htable[i].entries->next, SHM_MEM_TYPE, 1);
 		shm_free(htable[i].entries);
+		htable[i].entries = NULL;
 	}
 	shm_free(htable);
 	htable= NULL;
@@ -136,6 +139,7 @@ subs_t* mem_copy_subs(subs_t* s, int mem_type)
 		+ s->to_tag.len+ s->from_tag.len+s->sockinfo_str.len+s->event_id.len
 		+ s->local_contact.len+ s->contact.len+ s->record_route.len
 		+ s->reason.len+ s->watcher_user.len+ s->watcher_domain.len
+		+ s->user_agent.len
 		+ 1)*sizeof(char);
 
 	if(mem_type & PKG_MEM_TYPE)
@@ -164,6 +168,7 @@ subs_t* mem_copy_subs(subs_t* s, int mem_type)
 	CONT_COPY(dest, dest->local_contact, s->local_contact)
 	CONT_COPY(dest, dest->contact, s->contact)
 	CONT_COPY(dest, dest->record_route, s->record_route)
+	CONT_COPY(dest, dest->user_agent, s->user_agent)
 	if(s->event_id.s)
 		CONT_COPY(dest, dest->event_id, s->event_id)
 	if(s->reason.s)
@@ -177,6 +182,7 @@ subs_t* mem_copy_subs(subs_t* s, int mem_type)
 	dest->send_on_cback= s->send_on_cback;
 	dest->expires= s->expires;
 	dest->db_flag= s->db_flag;
+	dest->flags= s->flags;
 
 	return dest;
 
@@ -202,6 +208,7 @@ subs_t* mem_copy_subs_noc(subs_t* s)
 		+ s->to_tag.len+ s->from_tag.len+s->sockinfo_str.len+s->event_id.len
 		+ s->local_contact.len + s->record_route.len+
 		+ s->reason.len+ s->watcher_user.len+ s->watcher_domain.len
+		+ s->user_agent.len
 		+ 1)*sizeof(char);
 
 	dest= (subs_t*)shm_malloc(size);
@@ -225,6 +232,7 @@ subs_t* mem_copy_subs_noc(subs_t* s)
 	CONT_COPY(dest, dest->sockinfo_str, s->sockinfo_str)
 	CONT_COPY(dest, dest->local_contact, s->local_contact)
 	CONT_COPY(dest, dest->record_route, s->record_route)
+	CONT_COPY(dest, dest->user_agent, s->user_agent)
 	if(s->event_id.s)
 		CONT_COPY(dest, dest->event_id, s->event_id)
 	if(s->reason.s)
@@ -238,6 +246,7 @@ subs_t* mem_copy_subs_noc(subs_t* s)
 	dest->send_on_cback= s->send_on_cback;
 	dest->expires= s->expires;
 	dest->db_flag= s->db_flag;
+	dest->flags= s->flags;
 
 	dest->contact.s= (char*)shm_malloc(s->contact.len* sizeof(char));
 	if(dest->contact.s== NULL)
@@ -275,7 +284,7 @@ int insert_shtable(shtable_t htable,unsigned int hash_code, subs_t* subs)
 	return 0;
 }
 
-int delete_shtable(shtable_t htable,unsigned int hash_code,str to_tag)
+int delete_shtable(shtable_t htable,unsigned int hash_code,subs_t* subs)
 {
 	subs_t* s= NULL, *ps= NULL;
 	int found= -1;
@@ -287,14 +296,37 @@ int delete_shtable(shtable_t htable,unsigned int hash_code,str to_tag)
 		
 	while(s)
 	{
-		if(s->to_tag.len== to_tag.len &&
-				strncmp(s->to_tag.s, to_tag.s, to_tag.len)== 0)
+		if(pres_subs_remove_match==0) {
+			/* match on to-tag only (unique, local generated - faster) */
+			if(s->to_tag.len==subs->to_tag.len
+				&& strncmp(s->to_tag.s,subs->to_tag.s,subs->to_tag.len)==0)
+			{
+				found = 0;
+			}
+		} else {
+			/* match on all dialog attributes (distributed systems) */
+			if(s->callid.len==subs->callid.len
+				&& s->to_tag.len==subs->to_tag.len
+				&& s->from_tag.len==subs->from_tag.len
+				&& strncmp(s->callid.s,subs->callid.s,subs->callid.len)==0
+				&& strncmp(s->to_tag.s,subs->to_tag.s,subs->to_tag.len)==0
+				&& strncmp(s->from_tag.s,subs->from_tag.s,subs->from_tag.len)==0)
+			{
+				found = 0;
+			}
+		}
+		if(found==0)
 		{
 			found= s->local_cseq +1;
 			ps->next= s->next;
-			if(s->contact.s!=NULL)
+			if(s->contact.s!=NULL) {
 				shm_free(s->contact.s);
-			shm_free(s);
+				s->contact.s = NULL;
+			}
+			if (s) {
+				shm_free(s);
+				s = NULL;
+			}
 			break;
 		}
 		ps= s;
@@ -314,15 +346,21 @@ void free_subs_list(subs_t* s_array, int mem_type, int ic)
 		s_array= s_array->next;
 		if(mem_type & PKG_MEM_TYPE)
 		{
-			if(ic)
+			if(ic) {
 				pkg_free(s->contact.s);
+				s->contact.s = NULL;
+			}
 			pkg_free(s);
+			s = NULL;
 		}
 		else
 		{
-			if(ic)
+			if(ic) {
 				shm_free(s->contact.s);
+				s->contact.s = NULL;
+			}
 			shm_free(s);
+			s = NULL;
 		}
 	}
 	
@@ -355,7 +393,7 @@ int update_shtable(shtable_t htable,unsigned int hash_code,
 		subs->version = ++s->version;
 	}
 	
-	if(strncmp(s->contact.s, subs->contact.s, subs->contact.len))
+	if(presence_sip_uri_match(&s->contact, &subs->contact))
 	{
 		shm_free(s->contact.s);
 		s->contact.s= (char*)shm_malloc(subs->contact.len* sizeof(char));
@@ -463,7 +501,7 @@ pres_entry_t* search_phtable(str* pres_uri,int event, unsigned int hash_code)
 	while(p)
 	{
 		if(p->event== event && p->pres_uri.len== pres_uri->len &&
-				strncmp(p->pres_uri.s, pres_uri->s, pres_uri->len)== 0 )
+				presence_sip_uri_match(&p->pres_uri, pres_uri)== 0 )
 			return p;
 		p= p->next;
 	}
@@ -476,7 +514,7 @@ int insert_phtable(str* pres_uri, int event, char* sphere)
 	pres_entry_t* p= NULL;
 	int size;
 
-	hash_code= core_hash(pres_uri, NULL, phtable_size);
+	hash_code= core_case_hash(pres_uri, NULL, phtable_size);
 
 	lock_get(&pres_htable[hash_code].lock);
 	
@@ -508,14 +546,16 @@ int insert_phtable(str* pres_uri, int event, char* sphere)
 		if(p->sphere== NULL)
 		{
 			lock_release(&pres_htable[hash_code].lock);
+			shm_free(p);
 			ERR_MEM(SHARE_MEM);
 		}
 		strcpy(p->sphere, sphere);
 	}
 
 	p->event= event;
-	
+	p->publ_count=1;
 
+	/* link the item in the hash table */
 	p->next= pres_htable[hash_code].entries->next;
 	pres_htable[hash_code].entries->next= p;
 
@@ -532,7 +572,7 @@ int delete_phtable(str* pres_uri, int event)
 	unsigned int hash_code;
 	pres_entry_t* p= NULL, *prev_p= NULL;
 
-	hash_code= core_hash(pres_uri, NULL, phtable_size);
+	hash_code= core_case_hash(pres_uri, NULL, phtable_size);
 
 	lock_get(&pres_htable[hash_code].lock);
 	
@@ -589,7 +629,7 @@ int update_phtable(presentity_t* presentity, str pres_uri, str body)
 	}
 
 	/* search for record in hash table */
-	hash_code= core_hash(&pres_uri, NULL, phtable_size);
+	hash_code= core_case_hash(&pres_uri, NULL, phtable_size);
 	
 	lock_get(&pres_htable[hash_code].lock);
 

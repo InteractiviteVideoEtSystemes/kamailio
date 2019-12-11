@@ -15,9 +15,10 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
+
 /*!
  * \file
- * \brief SIP-router TLS support :: OpenSSL initialization funtions
+ * \brief Kamailio TLS support :: OpenSSL initialization funtions
  * \ingroup tls
  * Module: \ref tls
  */
@@ -52,8 +53,13 @@ extern const SSL_METHOD* ssl_methods[];
  */
 int tls_pre_init(void);
 
+/**
+ * just once, prepare for init of all modules
+ */
+int tls_mod_pre_init_h(void);
+
 /*
- * just once, initialize the tls subsystem 
+ * just once, initialize the tls subsystem after all mod inits
  */
 int init_tls_h(void);
 

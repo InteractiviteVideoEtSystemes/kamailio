@@ -1,7 +1,8 @@
 perlfunc.o: perlfunc.c ../../mem/mem.h ../../mem/../config.h \
  ../../mem/../types.h ../../mem/../dprint.h ../../mem/../compiler_opt.h \
  ../../mem/../cfg_core.h ../../mem/../cfg/cfg.h ../../mem/../cfg/../str.h \
- ../../mem/q_malloc.h ../../mem/meminfo.h ../../mem/src_loc.h \
+ ../../mem/pkg.h ../../mem/memapi.h ../../mem/src_loc.h \
+ ../../mem/meminfo.h ../../mem/memdbg.h ../../mem/../cfg/cfg.h \
  ../../data_lump.h ../../lump_struct.h ../.././parser/hf.h \
  ../.././parser/../str.h ../.././parser/../comp_defs.h \
  ../../parser/msg_parser.h ../../parser/../comp_defs.h \
@@ -10,13 +11,13 @@ perlfunc.o: perlfunc.c ../../mem/mem.h ../../mem/../config.h \
  ../../parser/../compiler_opt.h ../../parser/../ut.h \
  ../../parser/../comp_defs.h ../../parser/../config.h \
  ../../parser/../dprint.h ../../parser/../mem/mem.h \
- ../../parser/../mem/shm_mem.h ../../parser/../mem/../dprint.h \
+ ../../parser/../mem/shm_mem.h ../../parser/../mem/shm.h \
+ ../../parser/../mem/memapi.h ../../parser/../mem/../dprint.h \
  ../../parser/../mem/../lock_ops.h ../../parser/../mem/../futexlock.h \
  ../../parser/../mem/../atomic/atomic_common.h \
  ../../parser/../mem/../atomic/atomic_native.h \
  ../../parser/../mem/../atomic/atomic_x86.h \
- ../../parser/../mem/../compiler_opt.h ../../parser/../mem/q_malloc.h \
- ../../parser/../mem/src_loc.h ../../parser/../md5utils.h \
+ ../../parser/../mem/../compiler_opt.h ../../parser/../md5utils.h \
  ../../parser/../config.h ../../parser/parse_def.h \
  ../../parser/parse_cseq.h ../../parser/parse_via.h \
  ../../parser/parse_fline.h ../../parser/parse_retry_after.h \
@@ -80,11 +81,17 @@ perlfunc.o: perlfunc.c ../../mem/mem.h ../../mem/../config.h \
 
 ../../mem/../cfg/../str.h:
 
-../../mem/q_malloc.h:
+../../mem/pkg.h:
+
+../../mem/memapi.h:
+
+../../mem/src_loc.h:
 
 ../../mem/meminfo.h:
 
-../../mem/src_loc.h:
+../../mem/memdbg.h:
+
+../../mem/../cfg/cfg.h:
 
 ../../data_lump.h:
 
@@ -124,6 +131,10 @@ perlfunc.o: perlfunc.c ../../mem/mem.h ../../mem/../config.h \
 
 ../../parser/../mem/shm_mem.h:
 
+../../parser/../mem/shm.h:
+
+../../parser/../mem/memapi.h:
+
 ../../parser/../mem/../dprint.h:
 
 ../../parser/../mem/../lock_ops.h:
@@ -137,10 +148,6 @@ perlfunc.o: perlfunc.c ../../mem/mem.h ../../mem/../config.h \
 ../../parser/../mem/../atomic/atomic_x86.h:
 
 ../../parser/../mem/../compiler_opt.h:
-
-../../parser/../mem/q_malloc.h:
-
-../../parser/../mem/src_loc.h:
 
 ../../parser/../md5utils.h:
 

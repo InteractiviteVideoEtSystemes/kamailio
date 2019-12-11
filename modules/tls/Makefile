@@ -1,4 +1,3 @@
-# Makefile v 1.0 2002/12/27
 #
 # TLS module makefile
 #
@@ -41,11 +40,14 @@ include ../../Makefile.modules
 install-tls-cert: $(cfg_prefix)/$(cfg_dir)
 	MAIN_NAME=$(MAIN_NAME) ./$(SCR_NAME)_cert.sh -d $(cfg_prefix)/$(cfg_dir)
 
-install-cfg:  install-tls-cert
+install-cfg:
+	@if ! [ -d $(cfg_prefix)/$(cfg_dir) ]; then \
+		mkdir -p "$(cfg_prefix)/$(cfg_dir)" ; \
+	fi
 	@$(call try_err, $(INSTALL_TOUCH) \
 			"$(cfg_prefix)/$(cfg_dir)tls.cfg.sample" )
-	@sed -e "s#\./modules/tls/#$(cfg_target)#g" \
-			-e "s#ser-selfsigned#$(MAIN_NAME)-selfsigned#g" \
+	@sed -e "s#\/usr/local/etc/kamailio/#$(cfg_target)#g" \
+			-e "s#kamailio-selfsigned#$(MAIN_NAME)-selfsigned#g" \
 				< ./tls.cfg > "$(cfg_prefix)/$(cfg_dir)tls.cfg.sample"
 	@if [ -z "${skip_cfg_install}" -a \
 			! -f "$(cfg_prefix)/$(cfg_dir)tls.cfg" ]; then \

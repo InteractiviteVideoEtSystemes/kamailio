@@ -30,8 +30,10 @@ kamailioxs.o: kamailioxs.c /usr/lib64/perl5/CORE/EXTERN.h \
  ../../parser/../cfg_core.h ../../parser/../cfg/cfg.h \
  ../../parser/../cfg/../str.h ../../parser/../mem/mem.h \
  ../../parser/../mem/../config.h ../../parser/../mem/../dprint.h \
- ../../parser/../mem/q_malloc.h ../../parser/../mem/meminfo.h \
- ../../parser/../mem/src_loc.h ../../parser/../mem/shm_mem.h \
+ ../../parser/../mem/pkg.h ../../parser/../mem/memapi.h \
+ ../../parser/../mem/src_loc.h ../../parser/../mem/meminfo.h \
+ ../../parser/../mem/memdbg.h ../../parser/../mem/../cfg/cfg.h \
+ ../../parser/../mem/shm_mem.h ../../parser/../mem/shm.h \
  ../../parser/../mem/../lock_ops.h ../../parser/../mem/../futexlock.h \
  ../../parser/../mem/../atomic/atomic_common.h \
  ../../parser/../mem/../atomic/atomic_native.h \
@@ -180,13 +182,21 @@ kamailioxs.o: kamailioxs.c /usr/lib64/perl5/CORE/EXTERN.h \
 
 ../../parser/../mem/../dprint.h:
 
-../../parser/../mem/q_malloc.h:
+../../parser/../mem/pkg.h:
 
-../../parser/../mem/meminfo.h:
+../../parser/../mem/memapi.h:
 
 ../../parser/../mem/src_loc.h:
 
+../../parser/../mem/meminfo.h:
+
+../../parser/../mem/memdbg.h:
+
+../../parser/../mem/../cfg/cfg.h:
+
 ../../parser/../mem/shm_mem.h:
+
+../../parser/../mem/shm.h:
 
 ../../parser/../mem/../lock_ops.h:
 

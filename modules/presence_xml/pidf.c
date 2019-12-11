@@ -19,7 +19,7 @@
  *
  * You should have received a copy of the GNU General Public License 
  * along with this program; if not, write to the Free Software 
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  * History:
  * --------
@@ -42,6 +42,7 @@
 	#define _BSD_SOURCE 1				/* needed on linux to "fix" the effect
 										  of the above define on
 										  features.h/unistd.h syscall() */
+	#define _DEFAULT_SOURCE 1         /* _BSD_SOURCE is deprecated */
    #define _DARWIN_C_SOURCE 1
 #else
 	#define _XOPEN_SOURCE_EXTENDED 1   /* solaris */

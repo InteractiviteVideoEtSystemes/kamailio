@@ -1,4 +1,3 @@
-# $Id$
 #
 # 
 # WARNING: do not run this directly, it should be run by the master Makefile
@@ -7,11 +6,21 @@ include ../../Makefile.defs
 auto_gen=
 NAME=websocket.so
 
+EMBEDDED_UTF8_DECODE ?= 0
+
 ifeq ($(CROSS_COMPILE),)
 SSL_BUILDER=$(shell \
 	if pkg-config --exists libssl; then \
 		echo 'pkg-config libssl'; \
 	fi)
+
+ifneq ($(SSL_BUILDER),)
+SSL_BUILDER+=$(shell \
+	if pkg-config --exists libcrypto; then \
+		echo 'libcrypto'; \
+	fi)
+endif
+
 endif
 
 ifneq ($(SSL_BUILDER),)
@@ -27,7 +36,13 @@ else
 	#       E.g.: make TLS_HOOKS=1 TLS_EXTRA_LIBS="-lz -lkrb5"
 endif
 
-LIBS+= $(TLS_EXTRA_LIBS) -lunistring
+LIBS+= $(TLS_EXTRA_LIBS)
+
+ifeq ($(EMBEDDED_UTF8_DECODE),0)
+	LIBS+= -lunistring
+else
+	DEFS += -DEMBEDDED_UTF8_DECODE
+endif
 
 # Static linking, if you'd like to use TLS and WEBSOCKET at the same time
 #

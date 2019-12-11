@@ -18,7 +18,7 @@
  */
 
 /**
- * SIP-router TLS support :: Virtual domain configuration support
+ * Kamailio TLS support :: Virtual domain configuration support
  * @file
  * @ingroup tls
  * Module: @ref tls
@@ -35,12 +35,110 @@
 #include "../../pt.h"
 #include "../../cfg/cfg.h"
 #include "../../dprint.h"
+#include "tls_config.h"
 #include "tls_server.h"
 #include "tls_util.h"
 #include "tls_mod.h"
 #include "tls_init.h"
 #include "tls_domain.h"
 #include "tls_cfg.h"
+
+/*
+ * ECDHE is enabled only on OpenSSL 1.0.0e and later.
+ * See http://www.openssl.org/news/secadv_20110906.txt
+ * for details.
+ */
+#ifndef OPENSSL_NO_ECDH
+static void setup_ecdh(SSL_CTX *ctx)
+{
+   EC_KEY *ecdh;
+
+   if (SSLeay() < 0x1000005fL) {
+      return;
+   }
+
+   ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
+   SSL_CTX_set_options(ctx, SSL_OP_SINGLE_ECDH_USE);
+   SSL_CTX_set_tmp_ecdh(ctx, ecdh);
+
+   EC_KEY_free(ecdh);
+}
+#endif
+
+#ifndef OPENSSL_NO_DH
+
+static unsigned char dh3072_p[] = {
+   0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xC9,0x0F,0xDA,0xA2,
+   0x21,0x68,0xC2,0x34,0xC4,0xC6,0x62,0x8B,0x80,0xDC,0x1C,0xD1,
+   0x29,0x02,0x4E,0x08,0x8A,0x67,0xCC,0x74,0x02,0x0B,0xBE,0xA6,
+   0x3B,0x13,0x9B,0x22,0x51,0x4A,0x08,0x79,0x8E,0x34,0x04,0xDD,
+   0xEF,0x95,0x19,0xB3,0xCD,0x3A,0x43,0x1B,0x30,0x2B,0x0A,0x6D,
+   0xF2,0x5F,0x14,0x37,0x4F,0xE1,0x35,0x6D,0x6D,0x51,0xC2,0x45,
+   0xE4,0x85,0xB5,0x76,0x62,0x5E,0x7E,0xC6,0xF4,0x4C,0x42,0xE9,
+   0xA6,0x37,0xED,0x6B,0x0B,0xFF,0x5C,0xB6,0xF4,0x06,0xB7,0xED,
+   0xEE,0x38,0x6B,0xFB,0x5A,0x89,0x9F,0xA5,0xAE,0x9F,0x24,0x11,
+   0x7C,0x4B,0x1F,0xE6,0x49,0x28,0x66,0x51,0xEC,0xE4,0x5B,0x3D,
+   0xC2,0x00,0x7C,0xB8,0xA1,0x63,0xBF,0x05,0x98,0xDA,0x48,0x36,
+   0x1C,0x55,0xD3,0x9A,0x69,0x16,0x3F,0xA8,0xFD,0x24,0xCF,0x5F,
+   0x83,0x65,0x5D,0x23,0xDC,0xA3,0xAD,0x96,0x1C,0x62,0xF3,0x56,
+   0x20,0x85,0x52,0xBB,0x9E,0xD5,0x29,0x07,0x70,0x96,0x96,0x6D,
+   0x67,0x0C,0x35,0x4E,0x4A,0xBC,0x98,0x04,0xF1,0x74,0x6C,0x08,
+   0xCA,0x18,0x21,0x7C,0x32,0x90,0x5E,0x46,0x2E,0x36,0xCE,0x3B,
+   0xE3,0x9E,0x77,0x2C,0x18,0x0E,0x86,0x03,0x9B,0x27,0x83,0xA2,
+   0xEC,0x07,0xA2,0x8F,0xB5,0xC5,0x5D,0xF0,0x6F,0x4C,0x52,0xC9,
+   0xDE,0x2B,0xCB,0xF6,0x95,0x58,0x17,0x18,0x39,0x95,0x49,0x7C,
+   0xEA,0x95,0x6A,0xE5,0x15,0xD2,0x26,0x18,0x98,0xFA,0x05,0x10,
+   0x15,0x72,0x8E,0x5A,0x8A,0xAA,0xC4,0x2D,0xAD,0x33,0x17,0x0D,
+   0x04,0x50,0x7A,0x33,0xA8,0x55,0x21,0xAB,0xDF,0x1C,0xBA,0x64,
+   0xEC,0xFB,0x85,0x04,0x58,0xDB,0xEF,0x0A,0x8A,0xEA,0x71,0x57,
+   0x5D,0x06,0x0C,0x7D,0xB3,0x97,0x0F,0x85,0xA6,0xE1,0xE4,0xC7,
+   0xAB,0xF5,0xAE,0x8C,0xDB,0x09,0x33,0xD7,0x1E,0x8C,0x94,0xE0,
+   0x4A,0x25,0x61,0x9D,0xCE,0xE3,0xD2,0x26,0x1A,0xD2,0xEE,0x6B,
+   0xF1,0x2F,0xFA,0x06,0xD9,0x8A,0x08,0x64,0xD8,0x76,0x02,0x73,
+   0x3E,0xC8,0x6A,0x64,0x52,0x1F,0x2B,0x18,0x17,0x7B,0x20,0x0C,
+   0xBB,0xE1,0x17,0x57,0x7A,0x61,0x5D,0x6C,0x77,0x09,0x88,0xC0,
+   0xBA,0xD9,0x46,0xE2,0x08,0xE2,0x4F,0xA0,0x74,0xE5,0xAB,0x31,
+   0x43,0xDB,0x5B,0xFC,0xE0,0xFD,0x10,0x8E,0x4B,0x82,0xD1,0x20,
+   0xA9,0x3A,0xD2,0xCA,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF
+
+};
+
+static unsigned char dh3072_g[] = { 0x02 };
+
+static void setup_dh(SSL_CTX *ctx)
+{
+	DH *dh;
+	BIGNUM *p;
+	BIGNUM *g;
+
+	dh = DH_new();
+	if (dh == NULL) {
+		return;
+	}
+
+	p = BN_bin2bn(dh3072_p, sizeof(dh3072_p), NULL);
+	g = BN_bin2bn(dh3072_g, sizeof(dh3072_g), NULL);
+
+	if (p == NULL || g == NULL) {
+		DH_free(dh);
+		return;
+	}
+
+#if (OPENSSL_VERSION_NUMBER >= 0x1010000fL)
+	/* libssl >= v1.1.0 */
+	DH_set0_pqg(dh, p, NULL, g);
+#else
+	dh->p = p;
+	dh->g = g;
+#endif
+
+
+   SSL_CTX_set_options(ctx, SSL_OP_SINGLE_DH_USE);
+   SSL_CTX_set_tmp_dh(ctx, dh);
+
+   DH_free(dh);
+}
+#endif
 
 
 /**
@@ -96,6 +194,8 @@ void tls_free_domain(tls_domain_t* d)
 	if (d->crl_file.s) shm_free(d->crl_file.s);
 	if (d->pkey_file.s) shm_free(d->pkey_file.s);
 	if (d->cert_file.s) shm_free(d->cert_file.s);
+	if (d->server_name.s) shm_free(d->server_name.s);
+	if (d->server_id.s) shm_free(d->server_id.s);
 	shm_free(d);
 }
 
@@ -380,16 +480,25 @@ static int tls_foreach_CTX_in_cfg(tls_domains_cfg_t* cfg,
 int fix_shm_pathname(str* path)
 {
 	str new_path;
-	char* abs_path;
-	
-	if (path->s && path->len && *path->s != '.' && *path->s != '/') {
+	char *abs_path;
+
+	if(path->s && path->len && *path->s != '.' && *path->s != '/') {
 		abs_path = get_abs_pathname(0, path);
-		if (abs_path == 0) return -1;
+		if(abs_path == 0) {
+			LM_ERR("get abs pathname failed\n");
+			return -1;
+		}
 		new_path.len = strlen(abs_path);
 		new_path.s = shm_malloc(new_path.len + 1);
+		if(new_path.s == 0) {
+			LM_ERR("no more shm memory\n");
+			pkg_free(abs_path);
+			return -1;
+		}
 		memcpy(new_path.s, abs_path, new_path.len);
 		new_path.s[new_path.len] = 0;
 		shm_free(path->s);
+		pkg_free(abs_path);
 		*path = new_path;
 	}
 	return 0;
@@ -543,6 +652,12 @@ static int set_cipher_list(tls_domain_t* d)
 					tls_domain_str(d), cipher_list);
 			return -1;
 		}
+#ifndef OPENSSL_NO_ECDH
+                setup_ecdh(d->ctx[i]);
+#endif
+#ifndef OPENSSL_NO_DH
+                setup_dh(d->ctx[i]);
+#endif
 	}
 	return 0;
 }
@@ -619,11 +734,13 @@ static void sr_ssl_ctx_info_callback(const SSL *ssl, int event, int ret)
 		if(data==0)
 			data = (struct tls_extra_data*)SSL_get_app_data(ssl);
 		LOG(tls_dbg, "SSL handshake done\n");
+#if OPENSSL_VERSION_NUMBER < 0x010100000L
 		/* CVE-2009-3555 - disable renegotiation */
 		if (ssl->s3) {
 			LOG(tls_dbg, "SSL disable renegotiation\n");
 			ssl->s3->flags |= SSL3_FLAGS_NO_RENEGOTIATE_CIPHERS;
 		}
+#endif
 		data->flags |= F_TLS_CON_HANDSHAKED;
 	}
 }
@@ -741,6 +858,7 @@ static int tls_ssl_ctx_mode(SSL_CTX* ctx, long mode, void* clear)
  */
 static int tls_ssl_ctx_set_freelist(SSL_CTX* ctx, long val, void* unused)
 {
+#if OPENSSL_VERSION_NUMBER < 0x010100000L
 	if (val >= 0)
 #if OPENSSL_VERSION_NUMBER >= 0x01000000L
 #ifndef OPENSSL_NO_BUF_FREELISTS
@@ -749,6 +867,7 @@ static int tls_ssl_ctx_set_freelist(SSL_CTX* ctx, long val, void* unused)
 #endif
 #if defined (OPENSSL_NO_BUF_FREELISTS) || OPENSSL_VERSION_NUMBER < 0x01000000L
 		return -1;
+#endif
 #endif
 	return 0;
 }
@@ -787,6 +906,71 @@ static int tls_ssl_ctx_set_read_ahead(SSL_CTX* ctx, long val, void* unused)
 	return 0;
 }
 
+
+#ifndef OPENSSL_NO_TLSEXT
+
+/**
+ * @brief SNI callback function
+ *
+ * callback on server_name -> trigger context switch if a TLS domain
+ * for the server_name is found (checks socket too) */
+static int tls_server_name_cb(SSL *ssl, int *ad, void *private)
+{
+    tls_domain_t *orig_domain, *new_domain;
+	str server_name;
+
+	orig_domain = (tls_domain_t*)private;
+	server_name.s = (char*)SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
+	if (server_name.s)  {
+		LM_DBG("received server_name (TLS extension): '%s'\n", server_name.s);
+	} else {
+		LM_DBG("SSL_get_servername returned NULL: return SSL_TLSEXT_ERR_NOACK\n");
+		return SSL_TLSEXT_ERR_NOACK;
+	}
+
+	server_name.len = strlen(server_name.s);
+
+	new_domain = tls_lookup_cfg(*tls_domains_cfg, TLS_DOMAIN_SRV,
+			&orig_domain->ip, orig_domain->port, &server_name, 0);
+	if (new_domain==NULL) {
+		LM_DBG("TLS domain for socket [%s:%d] and server_name='%s' "
+			"not found\n", ip_addr2a(&orig_domain->ip),
+			orig_domain->port, server_name.s);
+		/* we do not perform SSL_CTX switching, thus the default server domain
+		   for this socket (or the default server domain) will be used. */
+		return SSL_TLSEXT_ERR_ALERT_WARNING;
+	}
+
+	LM_DBG("TLS cfg domain selected for received server name [%s]:"
+		" socket [%s:%d] server name='%s' -"
+		" switching SSL CTX to %p dom %p%s\n",
+		server_name.s, ip_addr2a(&new_domain->ip),
+		new_domain->port, ZSW(new_domain->server_name.s),
+		new_domain->ctx[process_no], new_domain,
+		(new_domain->type & TLS_DOMAIN_DEF)?" (default)":"");
+	SSL_set_SSL_CTX(ssl, new_domain->ctx[process_no]);
+	/* SSL_set_SSL_CTX only sets the correct certificate parameters, but does
+	   set the proper verify options. Thus this will be done manually! */
+
+	SSL_set_options(ssl, SSL_CTX_get_options(SSL_get_SSL_CTX(ssl)));
+	if ((SSL_get_verify_mode(ssl) == SSL_VERIFY_NONE) ||
+				(SSL_num_renegotiations(ssl) == 0)) {
+		/*
+		 * Only initialize the verification settings from the ctx
+		 * if they are not yet set, or if we're called when a new
+		 * SSL connection is set up (num_renegotiations == 0).
+		 * Otherwise, we would possibly reset a per-directory
+		 * configuration which was put into effect by ssl_hook_access.
+		 */
+		SSL_set_verify(ssl, SSL_CTX_get_verify_mode(SSL_get_SSL_CTX(ssl)),
+			SSL_CTX_get_verify_callback(SSL_get_SSL_CTX(ssl)));
+	}
+
+	return SSL_TLSEXT_ERR_OK;
+}
+#endif
+
+
 /**
  * @brief Initialize all domain attributes from default domains if necessary
  * @param d initialized TLS domain
@@ -805,15 +989,55 @@ static int fix_domain(tls_domain_t* d, tls_domain_t* def)
 		ERR("%s: Cannot allocate shared memory\n", tls_domain_str(d));
 		return -1;
 	}
+	if(d->method>TLS_USE_TLSvRANGE) {
+		LM_DBG("using tls methods range: %d\n", d->method);
+	} else {
+		LM_DBG("using one tls method version: %d\n", d->method);
+	}
 	memset(d->ctx, 0, sizeof(SSL_CTX*) * procs_no);
 	for(i = 0; i < procs_no; i++) {
-		d->ctx[i] = SSL_CTX_new((SSL_METHOD*)ssl_methods[d->method - 1]);
+		if(d->method>TLS_USE_TLSvRANGE) {
+			d->ctx[i] = SSL_CTX_new(SSLv23_method());
+		} else {
+			d->ctx[i] = SSL_CTX_new((SSL_METHOD*)ssl_methods[d->method - 1]);
+		}
 		if (d->ctx[i] == NULL) {
 			ERR("%s: Cannot create SSL context\n", tls_domain_str(d));
 			return -1;
 		}
+		if(d->method>TLS_USE_TLSvRANGE) {
+			SSL_CTX_set_options(d->ctx[i], (long)ssl_methods[d->method - 1]);
+		}
+#ifndef OPENSSL_NO_TLSEXT
+		/*
+		* check server domains for server_name extension and register
+		* callback function
+		*/
+		if ((d->type & TLS_DOMAIN_SRV) && d->server_name.len>0) {
+			if (!SSL_CTX_set_tlsext_servername_callback(d->ctx[i], tls_server_name_cb)) {
+				LM_ERR("register server_name callback handler for socket "
+					"[%s:%d], server_name='%s' failed for proc %d\n",
+					ip_addr2a(&d->ip), d->port, d->server_name.s, i);
+				return -1;
+			}
+			if (!SSL_CTX_set_tlsext_servername_arg(d->ctx[i], d)) {
+				LM_ERR("register server_name callback handler data for socket "
+					"[%s:%d], server_name='%s' failed for proc %d\n",
+					ip_addr2a(&d->ip), d->port, d->server_name.s, i);
+				return -1;
+			}
+		}
+#endif
 	}
-	
+
+#ifndef OPENSSL_NO_TLSEXT
+	if ((d->type & TLS_DOMAIN_SRV) && d->server_name.len>0) {
+		LM_NOTICE("registered server_name callback handler for socket "
+			"[%s:%d], server_name='%s' ...\n", ip_addr2a(&d->ip), d->port,
+			d->server_name.s);
+	}
+#endif
+
 	if (load_cert(d) < 0) return -1;
 	if (load_ca_list(d) < 0) return -1;
 	if (load_crl(d) < 0) return -1;
@@ -1078,6 +1302,7 @@ tls_domains_cfg_t* tls_new_cfg(void)
 		return 0;
 	}
 	memset(r, 0, sizeof(tls_domains_cfg_t));
+	atomic_set(&r->ref_count, 0);
 	return r;
 }
 
@@ -1091,7 +1316,7 @@ tls_domains_cfg_t* tls_new_cfg(void)
  * @return found configuration or default, if not found
  */
 tls_domain_t* tls_lookup_cfg(tls_domains_cfg_t* cfg, int type,
-								struct ip_addr* ip, unsigned short port)
+		struct ip_addr* ip, unsigned short port, str *sname, str *srvid)
 {
 	tls_domain_t *p;
 
@@ -1104,8 +1329,35 @@ tls_domain_t* tls_lookup_cfg(tls_domains_cfg_t* cfg, int type,
 	}
 
 	while (p) {
-		if ((p->port == port) && ip_addr_cmp(&p->ip, ip))
-			return p;
+		if(srvid && srvid->len>0) {
+			LM_DBG("comparing addr: [%s:%d]  [%s:%d] -- id: [%.*s] [%.*s]\n",
+				ip_addr2a(&p->ip), p->port, ip_addr2a(ip), port,
+				p->server_id.len, ZSW(p->server_id.s),
+				srvid->len, ZSW(srvid->s));
+			if(p->server_id.s && p->server_id.len==srvid->len
+					&& strncasecmp(p->server_name.s, srvid->s, srvid->len)==0) {
+				LM_DBG("TLS config found by server id\n");
+				return p;
+			}
+
+		}
+		if(sname) {
+			LM_DBG("comparing addr: [%s:%d]  [%s:%d] -- sni: [%.*s] [%.*s]\n",
+				ip_addr2a(&p->ip), p->port, ip_addr2a(ip), port,
+				p->server_name.len, ZSW(p->server_name.s),
+				sname->len, ZSW(sname->s));
+		}
+		if ((p->port==0 || p->port == port) && ip_addr_cmp(&p->ip, ip)) {
+			if(sname && sname->len>0) {
+				if(p->server_name.s && p->server_name.len==sname->len
+					&& strncasecmp(p->server_name.s, sname->s, sname->len)==0) {
+					LM_DBG("socket+server_name based TLS server domain found\n");
+					return p;
+				}
+			} else {
+				return p;
+			}
+		}
 		p = p->next;
 	}
 
@@ -1134,8 +1386,13 @@ static int domain_exists(tls_domains_cfg_t* cfg, tls_domain_t* d)
 	}
 
 	while (p) {
-		if ((p->port == d->port) && ip_addr_cmp(&p->ip, &d->ip))
-			return 1;
+		if ((p->port == d->port) && ip_addr_cmp(&p->ip, &d->ip)) {
+			if(p->server_name.len==0) {
+				LM_WARN("another tls domain with same address was defined"
+						" and no server name provided\n");
+				return 1;
+			}
+		}
 		p = p->next;
 	}
 

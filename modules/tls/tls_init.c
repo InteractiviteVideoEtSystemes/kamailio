@@ -1,4 +1,4 @@
-/* 
+/*
  * TLS module
  *
  * Copyright (C) 2005,2006 iptelorg GmbH
@@ -16,7 +16,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-/*! \defgroup tls SIP-router TLS support
+/*! \defgroup tls Kamailio TLS support
  *
  * This modules implements SIP over TCP with TLS encryption.
  * Make sure you read the README file that describes configuration
@@ -27,7 +27,7 @@
  */
 /*!
  * \file
- * \brief SIP-router TLS support :: Initialization
+ * \brief Kamailio TLS support :: Initialization
  * \ingroup tls
  * Module: \ref tls
  */
@@ -43,7 +43,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <openssl/ssl.h>
- 
+
 #include "../../dprint.h"
 #include "../../mem/shm_mem.h"
 #include "../../tcp_init.h"
@@ -61,6 +61,7 @@
 #include "tls_cfg.h"
 
 /* will be set to 1 when the TLS env is initialized to make destroy safe */
+static int tls_mod_preinitialized = 0;
 static int tls_mod_initialized = 0;
 
 #if OPENSSL_VERSION_NUMBER < 0x00907000L
@@ -137,6 +138,8 @@ const SSL_METHOD* ssl_methods[TLS_METHOD_MAX];
 #define NULL_GRACE_PERIOD 10U
 */
 
+
+
 inline static char* buf_append(char* buf, char* end, char* str, int str_len)
 {
 	if ( (buf+str_len)<end){
@@ -157,7 +160,7 @@ inline static int backtrace2str(char* buf, int size)
 	char* next;
 	char* s;
 	char* e;
-	
+
 	p=buf; end=buf+size;
 	bt_size=backtrace(bt, sizeof(bt)/sizeof(bt[0]));
 	bt_strs=backtrace_symbols(bt, bt_size);
@@ -200,7 +203,7 @@ static void* ser_malloc(size_t size, const char* file, int line)
 #ifdef RAND_NULL_MALLOC
 	static ticks_t st=0;
 
-	/* start random null returns only after 
+	/* start random null returns only after
 	 * NULL_GRACE_PERIOD from first call */
 	if (st==0) st=get_ticks();
 	if (((get_ticks()-st)<NULL_GRACE_PERIOD) || (random()%RAND_NULL_MALLOC)){
@@ -209,7 +212,7 @@ static void* ser_malloc(size_t size, const char* file, int line)
 		/* ugly hack: keep the bt inside the alloc'ed fragment */
 		p=_shm_malloc(size+s, file, "via ser_malloc", line);
 		if (p==0){
-			LOG(L_CRIT, "tsl: ser_malloc(%d)[%s:%d]==null, bt: %s\n", 
+			LOG(L_CRIT, "tsl: ser_malloc(%d)[%s:%d]==null, bt: %s\n",
 						size, file, line, bt_buf);
 		}else{
 			memcpy(p+size, bt_buf, s);
@@ -237,7 +240,7 @@ static void* ser_realloc(void *ptr, size_t size, const char* file, int line)
 #ifdef RAND_NULL_MALLOC
 	static ticks_t st=0;
 
-	/* start random null returns only after 
+	/* start random null returns only after
 	 * NULL_GRACE_PERIOD from first call */
 	if (st==0) st=get_ticks();
 	if (((get_ticks()-st)<NULL_GRACE_PERIOD) || (random()%RAND_NULL_MALLOC)){
@@ -266,6 +269,7 @@ static void* ser_realloc(void *ptr, size_t size, const char* file, int line)
 
 #else /*TLS_MALLOC_DBG */
 
+#if OPENSSL_VERSION_NUMBER < 0x010100000L
 static void* ser_malloc(size_t size)
 {
 	return shm_malloc(size);
@@ -276,9 +280,22 @@ static void* ser_realloc(void *ptr, size_t size)
 {
 		return shm_realloc(ptr, size);
 }
+#else
+static void* ser_malloc(size_t size, const char *fname, int fline)
+{
+	return shm_malloc(size);
+}
+
+
+static void* ser_realloc(void *ptr, size_t size, const char *fname, int fline)
+{
+		return shm_realloc(ptr, size);
+}
+#endif
 
 #endif
 
+#if OPENSSL_VERSION_NUMBER < 0x010100000L
 static void ser_free(void *ptr)
 {
 	/* The memory functions provided to openssl needs to behave like standard
@@ -291,6 +308,14 @@ static void ser_free(void *ptr)
 		shm_free(ptr);
 	}
 }
+#else
+static void ser_free(void *ptr, const char *fname, int fline)
+{
+	if (ptr) {
+		shm_free(ptr);
+	}
+}
+#endif
 
 
 /*
@@ -299,20 +324,20 @@ static void ser_free(void *ptr)
 int tls_h_init_si(struct socket_info *si)
 {
 	int ret;
-	     /*
-	      * reuse tcp initialization 
-	      */
+	/*
+	 * reuse tcp initialization
+	 */
 	ret = tcp_init(si);
 	if (ret != 0) {
 		ERR("Error while initializing TCP part of TLS socket %.*s:%d\n",
-		    si->address_str.len, si->address_str.s, si->port_no);
+			si->address_str.len, si->address_str.s, si->port_no);
 		goto error;
 	}
-	
+
 	si->proto = PROTO_TLS;
 	return 0;
-	
- error:
+
+error:
 	if (si->socket != -1) {
 		close(si->socket);
 		si->socket = -1;
@@ -323,29 +348,35 @@ int tls_h_init_si(struct socket_info *si)
 
 
 /*
- * initialize ssl methods 
+ * initialize ssl methods
  */
 static void init_ssl_methods(void)
 {
 	memset(ssl_methods, 0, sizeof(ssl_methods));
 
+	/* any SSL/TLS version */
+	ssl_methods[TLS_USE_SSLv23_cli - 1] = SSLv23_client_method();
+	ssl_methods[TLS_USE_SSLv23_srv - 1] = SSLv23_server_method();
+	ssl_methods[TLS_USE_SSLv23 - 1] = SSLv23_method();
+
+	/* only specific SSL or TLS version */
+#if OPENSSL_VERSION_NUMBER < 0x010100000L
 #ifndef OPENSSL_NO_SSL2
 	ssl_methods[TLS_USE_SSLv2_cli - 1] = SSLv2_client_method();
 	ssl_methods[TLS_USE_SSLv2_srv - 1] = SSLv2_server_method();
 	ssl_methods[TLS_USE_SSLv2 - 1] = SSLv2_method();
 #endif
+#endif
 
+#ifndef OPENSSL_NO_SSL3_METHOD
 	ssl_methods[TLS_USE_SSLv3_cli - 1] = SSLv3_client_method();
 	ssl_methods[TLS_USE_SSLv3_srv - 1] = SSLv3_server_method();
 	ssl_methods[TLS_USE_SSLv3 - 1] = SSLv3_method();
+#endif
 
 	ssl_methods[TLS_USE_TLSv1_cli - 1] = TLSv1_client_method();
 	ssl_methods[TLS_USE_TLSv1_srv - 1] = TLSv1_server_method();
 	ssl_methods[TLS_USE_TLSv1 - 1] = TLSv1_method();
-
-	ssl_methods[TLS_USE_SSLv23_cli - 1] = SSLv23_client_method();
-	ssl_methods[TLS_USE_SSLv23_srv - 1] = SSLv23_server_method();
-	ssl_methods[TLS_USE_SSLv23 - 1] = SSLv23_method();
 
 #if OPENSSL_VERSION_NUMBER >= 0x1000100fL
 	ssl_methods[TLS_USE_TLSv1_1_cli - 1] = TLSv1_1_client_method();
@@ -358,6 +389,17 @@ static void init_ssl_methods(void)
 	ssl_methods[TLS_USE_TLSv1_2_srv - 1] = TLSv1_2_server_method();
 	ssl_methods[TLS_USE_TLSv1_2 - 1] = TLSv1_2_method();
 #endif
+
+	/* ranges of TLS versions (require a minimum TLS version) */
+	ssl_methods[TLS_USE_TLSv1_PLUS - 1] = (void*)TLS_OP_TLSv1_PLUS;
+
+#if OPENSSL_VERSION_NUMBER >= 0x1000100fL
+	ssl_methods[TLS_USE_TLSv1_1_PLUS - 1] = (void*)TLS_OP_TLSv1_1_PLUS;
+#endif
+
+#if OPENSSL_VERSION_NUMBER >= 0x1000105fL
+	ssl_methods[TLS_USE_TLSv1_2_PLUS - 1] = (void*)TLS_OP_TLSv1_2_PLUS;
+#endif
 }
 
 
@@ -366,16 +408,17 @@ static void init_ssl_methods(void)
  */
 static int init_tls_compression(void)
 {
+#if OPENSSL_VERSION_NUMBER < 0x010100000L
 #if OPENSSL_VERSION_NUMBER >= 0x00908000L
 	int n, r;
 	STACK_OF(SSL_COMP)* comp_methods;
 	SSL_COMP* zlib_comp;
 	long ssl_version;
-	
+
 	/* disabling compression */
 #	ifndef SSL_COMP_ZLIB_IDX
 #		define SSL_COMP_ZLIB_IDX 1 /* openssl/ssl/ssl_ciph.c:84 */
-#	endif 
+#	endif
 	comp_methods = SSL_COMP_get_compression_methods();
 	if (comp_methods == 0) {
 		LOG(L_INFO, "tls: init_tls: compression support disabled in the"
@@ -401,7 +444,7 @@ static int init_tls_compression(void)
 				DBG("tls: init_tls: found compression method %p id %d\n",
 						zlib_comp, zlib_comp->id);
 				if (zlib_comp->id == SSL_COMP_ZLIB_IDX) {
-					DBG("tls: init_tls: found zlib compression (%d)\n", 
+					DBG("tls: init_tls: found zlib compression (%d)\n",
 							SSL_COMP_ZLIB_IDX);
 					break /* found */;
 				} else {
@@ -420,7 +463,7 @@ static int init_tls_compression(void)
 							"bug workaround (replacing zlib COMP method with "
 							"our own version)\n");
 				/* hack: make sure that the CRYPTO_EX_INDEX_COMP class is empty
-				 * and it does not contain any free_ex_data from the 
+				 * and it does not contain any free_ex_data from the
 				 * built-in zlib. This can happen if the current openssl
 				 * zlib malloc fix patch is used (CRYPTO_get_ex_new_index() in
 				 * COMP_zlib()). Unfortunately the only way
@@ -429,7 +472,7 @@ static int init_tls_compression(void)
 				 * (only the COMP class is initialized before).
 				 */
 				CRYPTO_cleanup_all_ex_data();
-				
+
 				if (fixed_c_zlib_init() != 0) {
 					LOG(L_CRIT, "tls: init_tls: BUG: failed to initialize zlib"
 							" compression fix, disabling compression...\n");
@@ -450,25 +493,41 @@ static int init_tls_compression(void)
 	}
 end:
 #endif /* OPENSSL_VERSION_NUMBER >= 0.9.8 */
+#endif /* OPENSSL_VERSION_NUMBER < 1.1.0 */
 	return 0;
 }
 
 
 /**
  * tls pre-init function
+ * - executed when module is loaded
  */
 int tls_pre_init(void)
 {
-	     /*
-	      * this has to be called before any function calling CRYPTO_malloc,
-	      * CRYPTO_malloc will set allow_customize in openssl to 0
-	      */
+#if OPENSSL_VERSION_NUMBER < 0x010100000L
+	void *(*mf)(size_t) = NULL;
+	void *(*rf)(void *, size_t) = NULL;
+	void (*ff)(void *) = NULL;
+#else
+	void *(*mf)(size_t, const char *, int) = NULL;
+	void *(*rf)(void *, size_t, const char *, int) = NULL;
+	void (*ff)(void *, const char *, int) = NULL;
+#endif
+
+	/*
+	 * this has to be called before any function calling CRYPTO_malloc,
+	 * CRYPTO_malloc will set allow_customize in openssl to 0
+	 */
 #ifdef TLS_MALLOC_DBG
 	if (!CRYPTO_set_mem_ex_functions(ser_malloc, ser_realloc, ser_free)) {
 #else
 	if (!CRYPTO_set_mem_functions(ser_malloc, ser_realloc, ser_free)) {
 #endif
 		ERR("Unable to set the memory allocation functions\n");
+		CRYPTO_get_mem_functions(&mf, &rf, &ff);
+		ERR("libssl current mem functions - m: %p r: %p f: %p\n", mf, rf, ff);
+		ERR("Be sure tls module is loaded before any other module using libssl"
+				" (can be loaded first to be safe)\n");
 		return -1;
 	}
 
@@ -480,6 +539,23 @@ int tls_pre_init(void)
 	return 0;
 }
 
+/**
+ * tls mod pre-init function
+ * - executed before any mod_init()
+ */
+int tls_mod_pre_init_h(void)
+{
+	if(tls_mod_preinitialized==1) {
+		LM_DBG("already mod pre-initialized\n");
+		return 0;
+	}
+	DBG("preparing tls env for modules initialization\n");
+	SSL_library_init();
+	SSL_load_error_strings();
+	tls_mod_preinitialized=1;
+	return 0;
+}
+
 /*
  * First step of TLS initialization
  */
@@ -487,30 +563,40 @@ int init_tls_h(void)
 {
 	/*struct socket_info* si;*/
 	long ssl_version;
+#if OPENSSL_VERSION_NUMBER < 0x010100000L
 	int lib_kerberos;
 	int lib_zlib;
 	int kerberos_support;
 	int comp_support;
 	const char* lib_cflags;
+#endif
 	int low_mem_threshold1;
 	int low_mem_threshold2;
 	str tls_grp;
 	str s;
 	cfg_ctx_t* cfg_ctx;
 
+	if(tls_mod_initialized == 1) {
+		LM_DBG("already initialized\n");
+		return 0;
+	}
+	DBG("initializing tls system\n");
+
 #if OPENSSL_VERSION_NUMBER < 0x00907000L
 	WARN("You are using an old version of OpenSSL (< 0.9.7). Upgrade!\n");
 #endif
 	ssl_version=SSLeay();
 	/* check if version have the same major minor and fix level
-	 * (e.g. 0.9.8a & 0.9.8c are ok, but 0.9.8 and 0.9.9x are not) */
-	if ((ssl_version>>8)!=(OPENSSL_VERSION_NUMBER>>8)){
+	 * (e.g. 0.9.8a & 0.9.8c are ok, but 0.9.8 and 0.9.9x are not)
+	 * - values is represented as 0xMMNNFFPPS: major minor fix patch status
+	 *   0x00090705f == 0.9.7e release */
+	if ((ssl_version>>12)!=(OPENSSL_VERSION_NUMBER>>12)){
 		LOG(L_CRIT, "ERROR: tls: init_tls_h: installed openssl library "
-				"version is too different from the library the ser tls module "
+				"version is too different from the library the Kamailio tls module "
 				"was compiled with: installed \"%s\" (0x%08lx), compiled "
 				"\"%s\" (0x%08lx).\n"
 				" Please make sure a compatible version is used"
-				" (tls_force_run in ser.cfg will override this check)\n",
+				" (tls_force_run in kamailio.cfg will override this check)\n",
 				SSLeay_version(SSLEAY_VERSION), ssl_version,
 				OPENSSL_VERSION_TEXT, (long)OPENSSL_VERSION_NUMBER);
 		if (cfg_get(tls, tls_cfg, force_run))
@@ -519,6 +605,10 @@ int init_tls_h(void)
 		else
 			return -1; /* safer to exit */
 	}
+
+/* check kerberos support using compile flags only for version < 1.1.0 */
+#if OPENSSL_VERSION_NUMBER < 0x010100000L
+
 #ifdef TLS_KERBEROS_SUPPORT
 	kerberos_support=1;
 #else
@@ -534,7 +624,7 @@ int init_tls_h(void)
 	lib_cflags=SSLeay_version(SSLEAY_CFLAGS);
 	lib_kerberos=0;
 	lib_zlib=0;
-	if ((lib_cflags==0) || strstr(lib_cflags, "not available")){ 
+	if ((lib_cflags==0) || strstr(lib_cflags, "not available")){
 		lib_kerberos=-1;
 		lib_zlib=-1;
 	}else{
@@ -543,7 +633,7 @@ int init_tls_h(void)
 		if (strstr(lib_cflags, "-DKRB5_"))
 			lib_kerberos=1;
 	}
-	LOG(L_INFO, "tls: _init_tls_h:  compiled  with  openssl  version " 
+	LOG(L_INFO, "tls: _init_tls_h:  compiled  with  openssl  version "
 				"\"%s\" (0x%08lx), kerberos support: %s, compression: %s\n",
 				OPENSSL_VERSION_TEXT, (long)OPENSSL_VERSION_NUMBER,
 				kerberos_support?"on":"off", comp_support?"on":"off");
@@ -559,8 +649,8 @@ int init_tls_h(void)
 		if (lib_kerberos!=-1){
 			LOG(L_CRIT, "ERROR: tls: init_tls_h: openssl compile options"
 						" mismatch: library has kerberos support"
-						" %s and ser tls %s (unstable configuration)\n"
-						" (tls_force_run in ser.cfg will override this"
+						" %s and Kamailio tls %s (unstable configuration)\n"
+						" (tls_force_run in kamailio.cfg will override this"
 						" check)\n",
 						lib_kerberos?"enabled":"disabled",
 						kerberos_support?"enabled":"disabled"
@@ -581,13 +671,16 @@ int init_tls_h(void)
 	/* if openssl compiled with kerberos support, and openssl < 0.9.8e-dev
 	 * or openssl between 0.9.9-dev and 0.9.9-beta1 apply workaround for
 	 * openssl bug #1467 */
-	if (ssl_version < 0x00908050L || 
+	if (ssl_version < 0x00908050L ||
 			(ssl_version >= 0x00909000L && ssl_version < 0x00909001L)){
 		openssl_kssl_malloc_bug=1;
 		LOG(L_WARN, "tls: init_tls_h: openssl kerberos malloc bug detected, "
 			" kerberos support will be disabled...\n");
 	}
 	#endif
+
+#endif /* libssl version < 1.1.0 (OPENSSL_VERSION_NUMBER < 0x010100000L) */
+
 	/* set free memory threshold for openssl bug #1491 workaround */
 	low_mem_threshold1 = cfg_get(tls, tls_cfg, low_mem_threshold1);
 	low_mem_threshold2 = cfg_get(tls, tls_cfg, low_mem_threshold2);
@@ -609,16 +702,17 @@ int init_tls_h(void)
 				" workaround enabled (on low memory tls operations will fail"
 				" preemptively) with free memory thresholds %d and %d bytes\n",
 				low_mem_threshold1, low_mem_threshold2);
-	
+
 	if (shm_available()==(unsigned long)(-1)){
-		LOG(L_WARN, "tls: ser compiled without MALLOC_STATS support:"
+		LOG(L_WARN, "tls: Kamailio is compiled without MALLOC_STATS support:"
 				" the workaround for low mem. openssl bugs will _not_ "
 				"work\n");
 		low_mem_threshold1=0;
 		low_mem_threshold2=0;
 	}
-	if ((low_mem_threshold1 != cfg_get(tls, tls_cfg, low_mem_threshold1)) ||
-	    (low_mem_threshold2 != cfg_get(tls, tls_cfg, low_mem_threshold2))) {
+	if ((low_mem_threshold1 != cfg_get(tls, tls_cfg, low_mem_threshold1))
+			|| (low_mem_threshold2
+					!= cfg_get(tls, tls_cfg, low_mem_threshold2))) {
 		/* ugly hack to set the initial values for the mem tresholds */
 		if (cfg_register_ctx(&cfg_ctx, 0)) {
 			ERR("failed to register cfg context\n");
@@ -643,9 +737,7 @@ int init_tls_h(void)
 			return -1;
 		}
 	}
-	
-	SSL_library_init();
-	SSL_load_error_strings();
+
 	init_ssl_methods();
 	tls_mod_initialized = 1;
 	return 0;
@@ -680,10 +772,16 @@ int tls_check_sockets(tls_domains_cfg_t* cfg)
 void destroy_tls_h(void)
 {
 	DBG("tls module final tls destroy\n");
-	if(tls_mod_initialized > 0)
+	if(tls_mod_preinitialized > 0)
 		ERR_free_strings();
 	/* TODO: free all the ctx'es */
 	tls_destroy_cfg();
 	tls_destroy_locks();
 	tls_ct_wq_destroy();
+#if OPENSSL_VERSION_NUMBER >= 0x010100000L
+	/* explicit execution of libssl cleanup to avoid being executed again
+	 * by atexit(), when shm is gone */
+	DBG("executing openssl v1.1+ cleanup\n");
+	OPENSSL_cleanup();
+#endif
 }

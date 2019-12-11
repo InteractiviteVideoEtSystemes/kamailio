@@ -1,6 +1,4 @@
 /*
- * $Id$
- *
  * Copyright (C) 2012-2013 Crocodile RCS Ltd
  *
  * This file is part of Kamailio, a free SIP server.
@@ -27,7 +25,13 @@
  */
 
 #include <limits.h>
+
+#ifdef EMBEDDED_UTF8_DECODE
+#include "utf8_decode.h"
+#else
 #include <unistr.h>
+#endif
+
 #include "../../events.h"
 #include "../../receive.h"
 #include "../../stats.h"
@@ -100,7 +104,7 @@ typedef enum
 /* 0xb - 0xf are reserved for further control frames */
 
 int ws_keepalive_mechanism = DEFAULT_KEEPALIVE_MECHANISM;
-str ws_ping_application_data = {0, 0};
+str ws_ping_application_data = STR_NULL;
 
 stat_var *ws_failed_connections;
 stat_var *ws_local_closed_connections;
@@ -131,6 +135,8 @@ static str str_status_bad_param = str_init("Bad connection ID parameter");
 static str str_status_error_closing = str_init("Error closing connection");
 static str str_status_error_sending = str_init("Error sending frame");
 static str str_status_string_error = str_init("Error converting string to int");
+
+static int ws_send_crlf(ws_connection_t *wsc, int opcode);
 
 static int encode_and_send_ws_frame(ws_frame_t *frame, conn_close_t conn_close)
 {
@@ -208,13 +214,13 @@ static int encode_and_send_ws_frame(ws_frame_t *frame, conn_close_t conn_close)
 
 	/* Allocate send buffer and build frame */
 	frame_length = frame->payload_len + extended_length + 2;
-	if ((send_buf = pkg_malloc(sizeof(unsigned char) * frame_length))
+	if ((send_buf = pkg_malloc(sizeof(char) * frame_length))
 			== NULL)
 	{
 		LM_ERR("allocating send buffer from pkg memory\n");
 		return -1;
 	}
-	memset(send_buf, 0, sizeof(unsigned char) * frame_length);
+	memset(send_buf, 0, sizeof(char) * frame_length);
 	send_buf[pos++] = 0x80 | (frame->opcode & 0xff);
 	if (extended_length == 0)
 		send_buf[pos++] = (frame->payload_len & 0xff);
@@ -405,7 +411,7 @@ static int decode_and_validate_ws_frame(ws_frame_t *frame,
                                         short *err_code, str *err_text)
 {
 	unsigned int i, len = tcpinfo->len;
-	int mask_start, j;
+	unsigned int mask_start, j;
 	char *buf = tcpinfo->buf;
 
 	LM_DBG("decoding WebSocket frame\n");
@@ -427,15 +433,6 @@ static int decode_and_validate_ws_frame(ws_frame_t *frame,
 	frame->opcode = (buf[0] & 0xff) & BYTE0_MASK_OPCODE;
 	frame->mask = (buf[1] & 0xff) & BYTE1_MASK_MASK;
 	
-	if (!frame->fin)
-	{
-		LM_WARN("WebSocket fragmentation not supported in the sip "
-			"sub-protocol\n");
-		*err_code = 1002;
-		*err_text = str_status_protocol_error;
-		return -1;
-	}
-
 	if (frame->rsv1 || frame->rsv2 || frame->rsv3)
 	{
 		LM_WARN("WebSocket reserved fields with non-zero values\n");
@@ -446,6 +443,10 @@ static int decode_and_validate_ws_frame(ws_frame_t *frame,
 
 	switch(frame->opcode)
 	{
+	case OPCODE_CONTINUATION:
+		LM_DBG("supported continuation frame: 0x%x\n",
+			(unsigned char) frame->opcode);
+		break;
 	case OPCODE_TEXT_FRAME:
 	case OPCODE_BINARY_FRAME:
 		LM_DBG("supported non-control frame: 0x%x\n",
@@ -530,12 +531,20 @@ static int decode_and_validate_ws_frame(ws_frame_t *frame,
 	frame->masking_key[3] = (buf[mask_start + 3] & 0xff);
 
 	/* Decode and unmask payload */
-	if (len != frame->payload_len + mask_start + 4)
+	if ((unsigned long long)len != (unsigned long long)frame->payload_len
+										+ mask_start + 4)
 	{
 		LM_WARN("message not complete frame size %u but received %u\n",
 			frame->payload_len + mask_start + 4, len);
 		*err_code = 1002;
 		*err_text = str_status_protocol_error;
+		return -1;
+	}
+	if(frame->payload_len >= BUF_SIZE) {
+		LM_WARN("message is too long for our buffer size (%d / %d)\n",
+				BUF_SIZE, frame->payload_len);
+		*err_code = 1009;
+		*err_text = str_status_message_too_big;
 		return -1;
 	}
 	frame->payload_data = &buf[mask_start + 4];
@@ -646,19 +655,70 @@ int ws_frame_receive(void *data)
 
 	switch(opcode)
 	{
+	case OPCODE_CONTINUATION:
+		if (likely(frame.wsc->sub_protocol == SUB_PROTOCOL_SIP))
+		{
+			if (frame.wsc->frag_buf.len + frame.payload_len >= BUF_SIZE)
+			{
+				LM_ERR("Buffer overflow assembling websocket fragments %d + %d = %d\n", frame.wsc->frag_buf.len, frame.payload_len, frame.wsc->frag_buf.len + frame.payload_len);
+				wsconn_put(frame.wsc);
+				return -1;
+			}
+			memcpy(frame.wsc->frag_buf.s + frame.wsc->frag_buf.len, frame.payload_data, frame.payload_len);
+			frame.wsc->frag_buf.len += frame.payload_len;
+			frame.wsc->frag_buf.s[frame.wsc->frag_buf.len] = '\0';
+
+			if (frame.fin)
+			{
+				ret = receive_msg(frame.wsc->frag_buf.s,
+						frame.wsc->frag_buf.len,
+						tcpinfo->rcv);
+				wsconn_put(frame.wsc);
+				return ret;
+			}
+			wsconn_put(frame.wsc);
+			return 0;
+		}
+		else
+		{
+			LM_ERR("Unsupported fragmented sub-protocol");
+			wsconn_put(frame.wsc);
+			return -1;
+		}
 	case OPCODE_TEXT_FRAME:
 	case OPCODE_BINARY_FRAME:
 		if (likely(frame.wsc->sub_protocol == SUB_PROTOCOL_SIP))
 		{
-			LM_DBG("Rx SIP message:\n%.*s\n", frame.payload_len,
+			LM_DBG("Rx SIP (or text) message:\n%.*s\n", frame.payload_len,
 				frame.payload_data);
 			update_stat(ws_sip_received_frames, 1);
 
-			wsconn_put(frame.wsc);
+			if((frame.payload_len==CRLF_LEN
+					&& strncmp(frame.payload_data, CRLF, CRLF_LEN)==0)
+					|| (frame.payload_len==CRLFCRLF_LEN
+					&& strncmp(frame.payload_data, CRLFCRLF, CRLFCRLF_LEN)==0))
+			{
+				ws_send_crlf(frame.wsc, opcode);
+				wsconn_put(frame.wsc);
+				return 0;
+			}
+			if (frame.fin)
+			{
 
-			return receive_msg(frame.payload_data,
+				wsconn_put(frame.wsc);
+
+				return receive_msg(frame.payload_data,
 						frame.payload_len,
 						tcpinfo->rcv);
+			}
+			else
+			{
+				memcpy(frame.wsc->frag_buf.s, frame.payload_data, frame.payload_len);
+				frame.wsc->frag_buf.len = frame.payload_len;
+				frame.wsc->frag_buf.s[frame.wsc->frag_buf.len] = '\0';
+				wsconn_put(frame.wsc);
+				return 0;
+			}
 		}
 		else if (frame.wsc->sub_protocol == SUB_PROTOCOL_MSRP)
 		{
@@ -726,17 +786,27 @@ int ws_frame_transmit(void *data)
 	frame.fin = 1;
 	/* Can't be sure whether this message is UTF-8 or not so check to see
 	   if it "might" be UTF-8 and send as binary if it definitely isn't */
+#ifdef EMBEDDED_UTF8_DECODE
+	frame.opcode = IsUTF8((uint8_t *) wsev->buf, wsev->len) ?
+				OPCODE_TEXT_FRAME : OPCODE_BINARY_FRAME;
+#else
 	frame.opcode = (u8_check((uint8_t *) wsev->buf, wsev->len) == NULL) ?
 				OPCODE_TEXT_FRAME : OPCODE_BINARY_FRAME;
+#endif
 	frame.payload_len = wsev->len;
 	frame.payload_data = wsev->buf;
 	frame.wsc = wsconn_get(wsev->id);
+	if (frame.wsc == NULL)
+	{
+		LM_ERR("WebSocket outbound connection not found\n");
+		return -1;
+	}
 
 	LM_DBG("Tx message:\n%.*s\n", frame.payload_len,
 			frame.payload_data);
 
 	if (encode_and_send_ws_frame(&frame, CONN_CLOSE_DONT) < 0)
-	{	
+	{
 		LM_ERR("sending message\n");
 
 		wsconn_put(frame.wsc);
@@ -761,13 +831,32 @@ static int ping_pong(ws_connection_t *wsc, int opcode)
 	frame.wsc = wsc;
 
 	if (encode_and_send_ws_frame(&frame, CONN_CLOSE_DONT) < 0)
-	{	
+	{
 		LM_ERR("sending keepalive\n");
 		return -1;
 	}
 
 	if (opcode == OPCODE_PING)
 		wsc->awaiting_pong = 1;
+
+	return 0;
+}
+
+static int ws_send_crlf(ws_connection_t *wsc, int opcode)
+{
+	ws_frame_t frame;
+
+	memset(&frame, 0, sizeof(frame));
+	frame.fin = 1;
+	frame.opcode = opcode;
+	frame.payload_len = CRLF_LEN;
+	frame.payload_data = CRLF;
+	frame.wsc = wsc;
+
+	if (encode_and_send_ws_frame(&frame, CONN_CLOSE_DONT) < 0) {
+		LM_ERR("failed sending CRLF\n");
+		return -1;
+	}
 
 	return 0;
 }

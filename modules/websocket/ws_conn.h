@@ -1,6 +1,4 @@
 /*
- * $Id$
- *
  * Copyright (C) 2012-2013 Crocodile RCS Ltd
  *
  * This file is part of Kamailio, a free SIP server.
@@ -62,6 +60,8 @@ typedef struct ws_connection
 
 	atomic_t refcnt;
 	int      run_event;
+
+	str frag_buf;
 } ws_connection_t;
 
 typedef struct
