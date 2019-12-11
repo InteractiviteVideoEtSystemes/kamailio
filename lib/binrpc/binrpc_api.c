@@ -1,37 +1,26 @@
 /*
- * $Id$
- *
  * Copyright (C) 2006 iptelorg GmbH
  *
- * This file is part of ser, a free SIP server.
+ * This file is part of Kamailio, a free SIP server.
  *
- * ser is free software; you can redistribute it and/or modify
+ * Kamailio is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version
  *
- * For a license to use the ser software under conditions
- * other than those described here, or to purchase support for this
- * software, please contact iptel.org by e-mail at the following addresses:
- *    info@iptel.org
- *
- * ser is distributed in the hope that it will be useful,
+ * Kamailio is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License 
- * along with this program; if not, write to the Free Software 
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
- 
-/*
+
+/**
  * send commands using binrpc
  *
- * History:
- * --------
- *  2006-11-09  created by vlada
- *  2006-12-20  extended by tma
  */
 
 #include <sys/types.h>
@@ -64,7 +53,7 @@
 #define binrpc_free internal_free
 
 #ifndef UNIX_PATH_MAX
-#define UNIX_PATH_MAX 108
+#define UNIX_PATH_MAX 104
 #endif
 
 #ifndef INT2STR_MAX_LEN
@@ -78,7 +67,7 @@ static void (*internal_free)(void* ptr) = free;
 static char binrpc_last_errs[1024] = "";
 static int verbose = 0;
 
-char *binrpc_get_last_errs() 
+char *binrpc_get_last_errs()
 {
     return binrpc_last_errs;
 }
@@ -224,28 +213,29 @@ static int connect_tcpudp_socket(char* address, int port, int type)
 	struct sockaddr_in addr;
 	struct hostent* he;
 	int sock;
-	
+
 	sock=-1;
 	/* resolve destination */
 	he=gethostbyname(address);
 	if (he==0){
-		snprintf(binrpc_last_errs, sizeof(binrpc_last_errs)-1, 
+		snprintf(binrpc_last_errs, sizeof(binrpc_last_errs)-1,
 				"connect_tcpudp_socket: could not resolve %s", address);
 		goto error;
 	}
 	/* open socket*/
+	memset(&addr, 0, sizeof(struct sockaddr_in));
 	addr.sin_family=he->h_addrtype;
 	addr.sin_port=htons(port);
 	memcpy(&addr.sin_addr.s_addr, he->h_addr_list[0], he->h_length);
-	
+
 	sock = socket(he->h_addrtype, type, 0);
 	if (sock==-1){
-		snprintf(binrpc_last_errs, sizeof(binrpc_last_errs)-1, 
+		snprintf(binrpc_last_errs, sizeof(binrpc_last_errs)-1,
 			"connect_tcpudp_socket: socket: %s", strerror(errno));
 		goto error;
 	}
 	if (connect(sock, (struct sockaddr*) &addr, sizeof(struct sockaddr))!=0){
-		snprintf(binrpc_last_errs, sizeof(binrpc_last_errs)-1, 
+		snprintf(binrpc_last_errs, sizeof(binrpc_last_errs)-1,
 				"connect_tcpudp_socket: connect: %s", strerror(errno));
 		goto error;
 	}
@@ -257,7 +247,7 @@ error:
 
 /* on exit cleanup */
 static void cleanup(struct sockaddr_un* mysun)
-{	
+{
 	if (mysun->sun_path[0] != '\0') {
 		if (unlink(mysun->sun_path) < 0) {
 			fprintf(stderr, "ERROR: failed to delete %s: %s\n",
@@ -270,7 +260,7 @@ int binrpc_open_connection(struct binrpc_handle* handle, char* name, int port, i
 		    char* reply_socket, char* sock_dir)
 {
 	struct sockaddr_un mysun;
-		
+
 	binrpc_last_errs[0] = '\0';
 	binrpc_last_errs[sizeof(binrpc_last_errs)-1] = '\0';  /* snprintf safe terminator */
 
@@ -826,7 +816,7 @@ int binrpc_print_response(struct binrpc_response_handle *resp_handle, char* fmt)
 read_value:
 		val.name.s=0;
 		val.name.len=0;
-		p=binrpc_read_record(&resp_handle->in_pkt, p, end, &val, &ret);
+		p=binrpc_read_record(&resp_handle->in_pkt, p, end, &val, 0, &ret);
 		if (ret<0){
 			if (fmt)
 				putchar('\n');
@@ -909,7 +899,7 @@ int binrpc_parse_response(struct binrpc_val** vals, int* val_count,
 		val.type = BINRPC_T_ALL;
 		val.name.s = 0;
 		val.name.len = 0;
-		p = binrpc_read_record(&resp_handle->in_pkt, p, end, &val, &ret);
+		p = binrpc_read_record(&resp_handle->in_pkt, p, end, &val, 0, &ret);
 		if (ret<0){
 			if (ret==E_BINRPC_EOP){
 				break;
@@ -993,7 +983,7 @@ int binrpc_parse_error_response(
 	val.type=BINRPC_T_INT;
 	val.name.s=0;
 	val.name.len=0;
-	p = binrpc_read_record(&resp_handle->in_pkt, p, end, &val, &ret);
+	p = binrpc_read_record(&resp_handle->in_pkt, p, end, &val, 0, &ret);
 	if (ret < 0) {
 		snprintf(binrpc_last_errs, sizeof(binrpc_last_errs)-1,
 			"parse_error_response: error when parsing reply (code): %s", binrpc_error(ret)
@@ -1003,7 +993,7 @@ int binrpc_parse_error_response(
 	*err_no = val.u.intval;
 
 	val.type=BINRPC_T_STR;
-	p = binrpc_read_record(&resp_handle->in_pkt, p, end, &val, &ret);
+	p = binrpc_read_record(&resp_handle->in_pkt, p, end, &val, 0, &ret);
 	if (ret < 0) {
 		snprintf(binrpc_last_errs, sizeof(binrpc_last_errs)-1,
 			"parse_error_response: error when parsing reply (str): %s", binrpc_error(ret)
@@ -1162,6 +1152,7 @@ int binrpc_response_to_text(
 		goto error;
 	}
 
+	memset(&val, 0, sizeof(struct binrpc_val));
 	resp_handle->in_pkt.offset = resp_handle->in_pkt.in_struct = resp_handle->in_pkt.in_array = 0;
 	
 	p=resp_handle->reply_buf;
@@ -1180,7 +1171,7 @@ int binrpc_response_to_text(
 		val.type=BINRPC_T_ALL;
 		val.name.s=0;
 		val.name.len=0;
-		p = binrpc_read_record(&resp_handle->in_pkt, p, end, &val, &ret);
+		p = binrpc_read_record(&resp_handle->in_pkt, p, end, &val, 0, &ret);
 		if (ret < 0) {
 			if (ret == E_BINRPC_EOP) {
 				printf("end of message detected\n");

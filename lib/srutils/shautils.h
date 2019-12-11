@@ -1,7 +1,7 @@
 /*
- * sruid - unique id generator
+ * sha and other hashing utilities
  *
- * Copyright (C) 2012 Daniel-Constantin Mierla (asipto.com)
+ * Copyright (C) 2014 1&1 Germany
  *
  * This file is part of Kamailio, a free SIP server.
  *
@@ -21,31 +21,22 @@
  */
 /*!
 * \file
-* \brief srutils :: Unique ID generator
+* \brief srutils :: SHA and other hashing utilities
 * \ingroup srutils
 * Module: \ref srutils
 */
 
-#ifndef _SRUID_H_
-#define _SRUID_H_
+#ifndef _SHAUTILS_H_
+#define _SHAUTILS_H_
 
-#include "../../str.h"
+#include "sha256.h"
 
-#define SRUID_SIZE	40
+void compute_md5(char *dst, char *src, int src_len);
 
-typedef enum {SRUID_INC=0, SRUID_LFSR=1} sruid_mode_t;
+void compute_sha256(char *dst, u_int8_t *src, int src_len);
 
-typedef struct sruid {
-	char buf[SRUID_SIZE];
-	char *out;
-	str uid;
-	unsigned int counter;
-	int pid;
-	sruid_mode_t mode;
-} sruid_t;
+void compute_sha384(char *dst, u_int8_t *src, int src_len);
 
-int sruid_init(sruid_t *sid, char sep, char *cid, int mode);
-int sruid_next(sruid_t *sid);
-int sruid_next_safe(sruid_t *sid);
+void compute_sha512(char *dst, u_int8_t *src, int src_len);
 
 #endif
