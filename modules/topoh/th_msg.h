@@ -1,9 +1,8 @@
 /**
- * $Id$
  *
  * Copyright (C) 2009 SIP-Router.org
  *
- * This file is part of Extensible SIP Router, a free SIP server.
+ * This file is part of Kamailio, a free SIP server.
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -20,7 +19,7 @@
 
 /*!
  * \file
- * \brief SIP-router topoh ::
+ * \brief Kamailio topoh ::
  * \ingroup topoh
  * Module: \ref topoh
  */
@@ -36,6 +35,7 @@ int th_mask_contact(sip_msg_t *msg);
 int th_mask_record_route(sip_msg_t *msg);
 int th_unmask_via(sip_msg_t *msg, str *cookie);
 int th_unmask_callid(sip_msg_t *msg);
+int th_unmask_callid_str(str *icallid, str *ocallid);
 int th_flip_record_route(sip_msg_t *msg, int mode);
 int th_unmask_ruri(sip_msg_t *msg);
 int th_unmask_route(sip_msg_t *msg);

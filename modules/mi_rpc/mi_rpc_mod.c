@@ -1,6 +1,4 @@
 /*
- * $Id$
- *
  * mi_rpc module
  *
  * Copyright (C) 2009 Daniel-Constantin Mierla (asipto.com).
@@ -34,7 +32,7 @@ MODULE_VERSION
 static int child_init(int rank);
 static int mod_init(void);
 
-static str mi_rpc_indent = { "\t", 1 };
+static str mi_rpc_indent = str_init("\t");
 static char *rpc_url = "";
 
 static const char* rpc_mi_exec_doc[2] = {
@@ -43,7 +41,7 @@ static const char* rpc_mi_exec_doc[2] = {
 };
 
 static param_export_t parameters[] = {
-    {"rpc_url",            STR_PARAM, &rpc_url},
+    {"rpc_url",            PARAM_STRING, &rpc_url},
     {0, 0, 0}
 };
 
@@ -268,7 +266,7 @@ static int mi_rpc_print_tree(rpc_t* rpc, void* ctx, struct mi_root *tree,
 		case MI_FIFO_PRINT:
 		case MI_DATAGRAM_PRINT:
 			/* always success, code & reason are the part of the reply */
-			rpc->printf(ctx, "%d %.*s\n", tree->code,
+			rpc->rpl_printf(ctx, "%d %.*s\n", tree->code,
 						tree->reason.len, tree->reason.s);
 			break;
 		case MI_PRETTY_PRINT:
@@ -288,7 +286,7 @@ static int mi_rpc_print_tree(rpc_t* rpc, void* ctx, struct mi_root *tree,
 	}
 	if (mode==MI_FIFO_PRINT){
 		/* mi fifo adds an extra "\n" at the end */
-		rpc->printf(ctx, "\n");
+		rpc->rpl_printf(ctx, "\n");
 	}
 	
 	return 0;
@@ -323,8 +321,8 @@ static void mi_rpc_async_close(struct mi_root* mi_rpl,
 		if (dctx==0){
 			BUG("null dctx\n");
 			shm_free(mi_h->param);
-			shm_free(mi_h);
 			mi_h->param=0;
+			shm_free(mi_h);
 			goto error;
 		}
 		mode=((struct mi_rpc_handler_param*)mi_h->param)->mode;
@@ -498,25 +496,28 @@ static struct mi_root* mi_run_rpc(struct mi_root* cmd_tree, void* param)
 	struct binrpc_handle rpc_handle;
 	struct binrpc_response_handle resp_handle;
 	int i;
-	
+
 	str *fn;
 	struct mi_node *node;
 	char *command = NULL;
 	int param_count = 0;
 	char **parameters = NULL;
 	struct mi_root* result;
-	
+
 	int resp_type;
 	int resp_code;
 	char *resp;
 
-	/* response will be malloced by binrpc_response_to_text. 
+	/* response will be malloced by binrpc_response_to_text.
 	   We do not free it. It must remain after this call.
 	   It will be reused by subsequent calls */
 	static unsigned char *response = NULL;
 	static int resp_len = 0;
-	
-	if (binrpc_open_connection_url(&rpc_handle, rpc_url) != 0) 
+
+	memset(&rpc_handle, 0, sizeof(struct binrpc_handle));
+	memset(&resp_handle, 0, sizeof(struct binrpc_response_handle));
+
+	if (binrpc_open_connection_url(&rpc_handle, rpc_url) != 0)
 	{
 		LM_ERR( "Open connect to %s failed\n", rpc_url);
 		result = init_mi_tree( 500, (char *)CONNECT_FAILED, strlen(CONNECT_FAILED) );
@@ -529,12 +530,12 @@ static struct mi_root* mi_run_rpc(struct mi_root* cmd_tree, void* param)
 		return( init_mi_tree( 400, MI_MISSING_PARM_S, MI_MISSING_PARM_LEN ));
 
 	fn = &node->value;
-	
+
 	/* find_rpc_exports needs 0 terminated strings */
 	command = pkg_malloc(fn->len+1);
     memcpy(command, fn->s, fn->len);
 	command[fn->len] = '\0';
-	
+
 	/* Count the parameters. */
 	node = node->next;
 	while (node) {
@@ -566,9 +567,9 @@ static struct mi_root* mi_run_rpc(struct mi_root* cmd_tree, void* param)
 		result = init_mi_tree( 500, (char *)FAILED, strlen(FAILED) );
 		goto end;
 	}
-	
+
 	resp_type = binrpc_get_response_type(&resp_handle);
-	
+
 	/* If we already have a buffer make it NULL terminated to discard any previous content */
 	if (resp_len > 0)
 		response[0]='\0';
@@ -584,12 +585,12 @@ static struct mi_root* mi_run_rpc(struct mi_root* cmd_tree, void* param)
 				/* Some functions don't give a text answer; use a default */
 				result = init_mi_tree( 200, MI_OK_S, MI_OK_LEN );
 			break;
-			
+
 		case 1:
 			/* Valid failure */
 			binrpc_parse_error_response(&resp_handle, &resp_code, &resp);
 			if (resp_len < strlen(resp) + 1)
-			{ 
+			{
 				if (resp_len==0)
 					response = malloc(strlen(resp) + 1);
 				else
@@ -603,7 +604,7 @@ static struct mi_root* mi_run_rpc(struct mi_root* cmd_tree, void* param)
 				/* Some functions don't give a text answer; use a default */
 				result = init_mi_tree( resp_code, (char *)FAILED, strlen(FAILED) );
 			break;
-			
+
 		default:
 			result = init_mi_tree( 500, (char *)FAILED, strlen(FAILED) );
 			goto end;
@@ -612,7 +613,7 @@ static struct mi_root* mi_run_rpc(struct mi_root* cmd_tree, void* param)
 end:
 	if (param_count > 0)
 	{
-		for (i=0; i<param_count; i++) 
+		for (i=0; i<param_count; i++)
 		{
 			pkg_free(parameters[i]);
 		}

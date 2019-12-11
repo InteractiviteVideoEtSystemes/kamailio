@@ -1,7 +1,4 @@
 /*
- * $Id$
- *
- * XMPP Module
  * This file is part of Kamailio, a free SIP server.
  *
  * Copyright (C) 2006 Voice Sistem S.R.L.
@@ -18,7 +15,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  * Author: Andreea Spirea
  *
@@ -454,7 +451,7 @@ int xmpp_server_child_process(int data_pipe)
 	int listen_fd;
 	fd_set fdset;
 	struct xmpp_connection *conn;
-	
+
 	snprintf(local_secret, sizeof(local_secret), "%s", random_secret());
 
 	while ((listen_fd = net_listen(xmpp_domain, xmpp_port)) < 0) {
@@ -466,13 +463,17 @@ int xmpp_server_child_process(int data_pipe)
 		FD_ZERO(&fdset);
 		FD_SET(data_pipe, &fdset);
 		FD_SET(listen_fd, &fdset);
-		
+
 		/* check for dead connections */
 		for (conn = conn_list; conn; ) {
 			struct xmpp_connection *next = conn->next;
 
-			if (conn->type == CONN_DEAD)
+			if (conn->type == CONN_DEAD) {
+				if(conn == conn_list) {
+					conn_list = next;
+				}
 				conn_free(conn);
+			}
 			conn = next;
 		}
 
@@ -491,7 +492,7 @@ int xmpp_server_child_process(int data_pipe)
 				} else {
 					conn->type = CONN_DEAD;
 				}
-			}		
+			}
 
 			if (conn->fd != -1)
 				FD_SET(conn->fd, &fdset);

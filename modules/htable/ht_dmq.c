@@ -1,5 +1,5 @@
 /**
- * 
+ *
  * Copyright (C) 2013 Charles Chance (Sipcentric Ltd)
  *
  * This file is part of Kamailio, a free SIP server.
@@ -14,9 +14,9 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License 
- * along with this program; if not, write to the Free Software 
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
 
@@ -50,15 +50,16 @@ int ht_dmq_initialize()
 {
 	dmq_peer_t not_peer;
 
-        /* load the DMQ API */
-        if (dmq_load_api(&ht_dmqb)!=0) {
-                LM_ERR("cannot load dmq api\n");
-                return -1;
-        } else {
-                LM_DBG("loaded dmq api\n");
-        }
+	/* load the DMQ API */
+	if (dmq_load_api(&ht_dmqb)!=0) {
+		LM_ERR("cannot load dmq api\n");
+		return -1;
+	} else {
+		LM_DBG("loaded dmq api\n");
+	}
 
 	not_peer.callback = ht_dmq_handle_msg;
+	not_peer.init_callback = NULL;
 	not_peer.description.s = "htable";
 	not_peer.description.len = 6;
 	not_peer.peer_id.s = "htable";
@@ -75,20 +76,21 @@ error:
 	return -1;
 }
 
-int ht_dmq_broadcast(str* body) {
-        if (!ht_dmq_peer) {
-                LM_ERR("ht_dmq_peer is null!\n");
-                return -1;
-        }
-        LM_DBG("sending broadcast...\n");
-        ht_dmqb.bcast_message(ht_dmq_peer, body, 0, &ht_dmq_resp_callback, 1, &ht_dmq_content_type);
-        return 0;
+int ht_dmq_broadcast(str* body)
+{
+	if (!ht_dmq_peer) {
+		LM_ERR("ht_dmq_peer is null!\n");
+		return -1;
+	}
+	LM_DBG("sending broadcast...\n");
+	ht_dmqb.bcast_message(ht_dmq_peer, body, 0, &ht_dmq_resp_callback, 1, &ht_dmq_content_type);
+	return 0;
 }
 
 /**
  * @brief ht dmq callback
  */
-int ht_dmq_handle_msg(struct sip_msg* msg, peer_reponse_t* resp)
+int ht_dmq_handle_msg(struct sip_msg* msg, peer_reponse_t* resp, dmq_node_t* dmq_node)
 {
 	int content_length;
 	str body;
@@ -101,7 +103,9 @@ int ht_dmq_handle_msg(struct sip_msg* msg, peer_reponse_t* resp)
 
 	/* received dmq message */
 	LM_DBG("dmq message received\n");
-	
+
+	srjson_InitDoc(&jdoc, NULL);
+
 	if(!msg->content_length) {
 		LM_ERR("no content length header found\n");
 		goto invalid;
@@ -121,9 +125,8 @@ int ht_dmq_handle_msg(struct sip_msg* msg, peer_reponse_t* resp)
 	}
 
 	/* parse body */
-	LM_DBG("body: %.*s\n", body.len, body.s);	
+	LM_DBG("body: %.*s\n", body.len, body.s);
 
-	srjson_InitDoc(&jdoc, NULL);
 	jdoc.buf = body;
 
 	if(jdoc.root == NULL) {
@@ -139,7 +142,7 @@ int ht_dmq_handle_msg(struct sip_msg* msg, peer_reponse_t* resp)
 	{
 		LM_DBG("found field: %s\n", it->string);
 		if (strcmp(it->string, "action")==0) {
-			action = it->valueint;
+			action = SRJSON_GET_INT(it);
 		} else if (strcmp(it->string, "htname")==0) {
 			htname.s = it->valuestring;
 			htname.len = strlen(htname.s);
@@ -147,19 +150,19 @@ int ht_dmq_handle_msg(struct sip_msg* msg, peer_reponse_t* resp)
 			cname.s = it->valuestring;
 			cname.len = strlen(cname.s);
 		} else if (strcmp(it->string, "type")==0) {
-			type = it->valueint;
+			type = SRJSON_GET_INT(it);
 		} else if (strcmp(it->string, "strval")==0) {
 			val.s.s = it->valuestring;
 			val.s.len = strlen(val.s.s);
 		} else if (strcmp(it->string, "intval")==0) {
-			val.n = it->valueint;
+			val.n = SRJSON_GET_INT(it);
 		} else if (strcmp(it->string, "mode")==0) {
-			mode = it->valueint;
+			mode = SRJSON_GET_INT(it);
 		} else {
 			LM_ERR("unrecognized field in json object\n");
 			goto invalid;
 		}
-	}	
+	}
 
 	if (ht_dmq_replay_action(action, &htname, &cname, type, &val, mode)!=0) {
 		LM_ERR("failed to replay action\n");
@@ -180,7 +183,7 @@ invalid:
 error:
 	srjson_DestroyDoc(&jdoc);
 	resp->reason = dmq_500_rpl;
-	resp->resp_code = 500;	
+	resp->resp_code = 500;
 	return 0;
 }
 
@@ -188,7 +191,7 @@ int ht_dmq_replicate_action(ht_dmq_action_t action, str* htname, str* cname, int
 
 	srjson_doc_t jdoc;
 
-        LM_DBG("replicating action to dmq peers...\n");
+	LM_DBG("replicating action to dmq peers...\n");
 
 	srjson_InitDoc(&jdoc, NULL);
 
@@ -213,7 +216,7 @@ int ht_dmq_replicate_action(ht_dmq_action_t action, str* htname, str* cname, int
 		}
 	}
 
-	srjson_AddNumberToObject(&jdoc, jdoc.root, "mode", mode);	
+	srjson_AddNumberToObject(&jdoc, jdoc.root, "mode", mode);
 
 	jdoc.buf.s = srjson_PrintUnformatted(&jdoc, jdoc.root);
 	if(jdoc.buf.s!=NULL) {
@@ -250,7 +253,7 @@ int ht_dmq_replay_action(ht_dmq_action_t action, str* htname, str* cname, int ty
 		return -1;
 	}
 
-        LM_DBG("replaying action %d on %.*s=>%.*s...\n", action, htname->len, htname->s, cname->len, cname->s);
+	LM_DBG("replaying action %d on %.*s=>%.*s...\n", action, htname->len, htname->s, cname->len, cname->s);
 
 	if (action==HT_DMQ_SET_CELL) {
 		return ht_set_cell(ht, cname, type, val, mode);

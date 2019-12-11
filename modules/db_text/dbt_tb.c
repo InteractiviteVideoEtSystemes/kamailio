@@ -1,6 +1,4 @@
 /*
- * $Id$
- *
  * DBText library
  *
  * Copyright (C) 2001-2003 FhG Fokus
@@ -19,11 +17,7 @@
  *
  * You should have received a copy of the GNU General Public License 
  * along with this program; if not, write to the Free Software 
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- * 
- * History:
- * --------
- * 2003-02-03 created by Daniel
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  * 
  */
 
@@ -143,7 +137,7 @@ dbt_table_p dbt_table_new(const str *_tbname, const str *_dbname, const char *pa
 {
 	struct stat s;
 	dbt_table_p dtp = NULL;
-	if(!_tbname || !_dbname || !path)
+	if(!_tbname || !_dbname)
 		return NULL;
 	
 	dtp = (dbt_table_p)shm_malloc(sizeof(dbt_table_t));
@@ -181,7 +175,7 @@ dbt_table_p dbt_table_new(const str *_tbname, const str *_dbname, const char *pa
 	dtp->nrrows = dtp->nrcols = dtp->auto_val = 0;
 	dtp->auto_col = -1;
 	dtp->mt = 0;
-	if(stat(path, &s) == 0)
+	if(path && stat(path, &s) == 0)
 	{
 		dtp->mt = s.st_mtime;
 		LM_DBG("mtime is %d\n", (int)s.st_mtime);

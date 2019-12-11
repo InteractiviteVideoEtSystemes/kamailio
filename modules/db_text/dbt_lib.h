@@ -1,6 +1,4 @@
 /*
- * $Id$
- *
  * DBText library
  *
  * Copyright (C) 2001-2003 FhG Fokus
@@ -19,11 +17,7 @@
  *
  * You should have received a copy of the GNU General Public License 
  * along with this program; if not, write to the Free Software 
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- * 
- * History:
- * --------
- * 2003-01-30 created by Daniel
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  * 
  */
 
@@ -41,6 +35,7 @@
 
 #define DBT_TBFL_ZERO	0
 #define DBT_TBFL_MODI	1
+#define DBT_TBFL_TEMP	2
 
 #define DBT_FL_IGN		-1
 #define DBT_FL_SET		0
@@ -54,6 +49,9 @@
  *  * Module parameters variables
  *   */
 extern int db_mode; /* Database usage mode: 0 = no cache, 1 = cache */
+extern int empty_string; /* If TRUE, an empty string is an empty string, otherwise NULL */
+extern int _db_text_read_buffer_size; /* size of the buffer to allocate when reading file */
+extern int _db_text_max_result_rows; /* max result rows */
 
 typedef db_val_t dbt_val_t, *dbt_val_p;
 
@@ -113,6 +111,7 @@ typedef struct _dbt_cache
 int dbt_init_cache(void);
 int dbt_cache_destroy(void);
 int dbt_cache_print(int);
+int dbt_cache_print2(int, int);
 
 dbt_cache_p dbt_cache_get_db(str*);
 int dbt_cache_check_db(str*);
@@ -125,12 +124,13 @@ int dbt_cache_free(dbt_cache_p);
 dbt_column_p dbt_column_new(char*, int);
 dbt_row_p dbt_row_new(int);
 dbt_table_p dbt_table_new(const str*, const str*, const char*);
+dbt_table_p dbt_db_get_temp_table(dbt_cache_p _dc);
 
 int dbt_row_free(dbt_table_p, dbt_row_p);
 int dbt_column_free(dbt_column_p);
 int dbt_table_free_rows(dbt_table_p);
 int dbt_table_free(dbt_table_p);
-
+int dbt_db_del_table(dbt_cache_p _dc, const str *_s, int sync);
 
 int dbt_row_set_val(dbt_row_p, dbt_val_p, int, int);
 int dbt_row_update_val(dbt_row_p, dbt_val_p, int, int);

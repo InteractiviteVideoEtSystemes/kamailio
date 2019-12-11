@@ -1,9 +1,8 @@
 /*
- * $Id$
- *
  * DBText module interface
  *
  * Copyright (C) 2001-2003 FhG Fokus
+ * Copyright (C) 2014 Edvina AB, Olle E. Johansson
  *
  * This file is part of Kamailio, a free SIP server.
  *
@@ -19,13 +18,7 @@
  *
  * You should have received a copy of the GNU General Public License 
  * along with this program; if not, write to the Free Software 
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- * 
- * History:
- * --------
- * 2003-01-30 created by Daniel
- * 2003-03-11 New module interface (janakj)
- * 2003-03-16 flags export parameter added (janakj)
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  * 
  */
 
@@ -44,10 +37,16 @@ MODULE_VERSION
 static int mod_init(void);
 static void destroy(void);
 
+#define DEFAULT_DB_TEXT_READ_BUFFER_SIZE 16384
+#define DEFAULT_MAX_RESULT_ROWS 100000;
+
 /*
  * Module parameter variables
  */
 int db_mode = 0;  /* Database usage mode: 0 = cache, 1 = no cache */
+int empty_string = 0;  /* Treat empty string as "" = 0, 1 = NULL */
+int _db_text_read_buffer_size = DEFAULT_DB_TEXT_READ_BUFFER_SIZE;
+int _db_text_max_result_rows = DEFAULT_MAX_RESULT_ROWS;
 
 int dbt_bind_api(db_func_t *dbb);
 
@@ -65,6 +64,9 @@ static cmd_export_t cmds[] = {
  */
 static param_export_t params[] = {
 	{"db_mode", INT_PARAM, &db_mode},
+	{"emptystring", INT_PARAM, &empty_string},
+	{"file_buffer_size", INT_PARAM, &_db_text_read_buffer_size},
+	{"max_result_rows", INT_PARAM, &_db_text_max_result_rows},
 	{0, 0, 0}
 };
 
@@ -109,7 +111,7 @@ static int mod_init(void)
 static void destroy(void)
 {
 	LM_DBG("destroy ...\n");
-	dbt_cache_print(0);
+	dbt_cache_print2(0, 0);
 	dbt_cache_destroy();
 }
 
@@ -126,10 +128,15 @@ int dbt_bind_api(db_func_t *dbb)
 	dbb->init        = dbt_init;
 	dbb->close       = dbt_close;
 	dbb->query       = (db_query_f)dbt_query;
+	dbb->fetch_result = (db_fetch_result_f) dbt_fetch_result;
 	dbb->free_result = dbt_free_result;
 	dbb->insert      = (db_insert_f)dbt_insert;
 	dbb->delete      = (db_delete_f)dbt_delete; 
 	dbb->update      = (db_update_f)dbt_update;
+	dbb->replace     = (db_replace_f)dbt_replace;
+	dbb->affected_rows = (db_affected_rows_f) dbt_affected_rows;
+	dbb->raw_query   = (db_raw_query_f) dbt_raw_query;
+	dbb->cap         = DB_CAP_ALL | DB_CAP_AFFECTED_ROWS | DB_CAP_RAW_QUERY | DB_CAP_REPLACE | DB_CAP_FETCH;
 
 	return 0;
 }
@@ -142,9 +149,9 @@ static const char *rpc_dump_doc[2] = {
 /* rpc function implementations */
 static void rpc_dump(rpc_t *rpc, void *c) {
 	if (0!=dbt_cache_print(0))
-		rpc->printf(c, "Dump failed");
+		rpc->rpl_printf(c, "Dump failed");
 	else
-		rpc->printf(c, "Dump OK");
+		rpc->rpl_printf(c, "Dump OK");
 
 	return;
 }

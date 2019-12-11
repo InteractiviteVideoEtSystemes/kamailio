@@ -1,6 +1,4 @@
 /*
- * $Id$
- *
  * DBText library
  *
  * Copyright (C) 2001-2003 FhG Fokus
@@ -19,11 +17,7 @@
  *
  * You should have received a copy of the GNU General Public License 
  * along with this program; if not, write to the Free Software 
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- * 
- * History:
- * --------
- * 2003-02-03 created by Daniel
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  * 
  */
 
@@ -90,23 +84,25 @@ int dbt_check_mtime(const str *tbn, const str *dbn, time_t *mt)
 dbt_table_p dbt_load_file(const str *tbn, const str *dbn)
 {
 	FILE *fin=NULL;
-	char path[512], buf[4096];
+	char path[512];
+	char *buf;
 	int c, crow, ccol, bp, sign, max_auto;
 	dbt_val_t dtval;
 	dbt_table_p dtp = NULL;
 	dbt_column_p colp, colp0 = NULL;
 	dbt_row_p rowp, rowp0 = NULL;
-		
+
 	enum {DBT_FLINE_ST, DBT_NLINE_ST, DBT_DATA_ST} state;
-	
-	LM_DBG("request for table [%.*s]\n", tbn->len, tbn->s);
-	
+
 	if(!tbn || !tbn->s || tbn->len<=0 || tbn->len>=255)
 		return NULL;
+
+	LM_DBG("request for table [%.*s] (len: %d)\n", tbn->len, tbn->s, tbn->len);
+
 	path[0] = 0;
 	if(dbn && dbn->s && dbn->len>0)
 	{
-		LM_DBG("db is [%.*s]\n", dbn->len, dbn->s);
+		LM_DBG("db is [%.*s] (len: %d)\n", dbn->len, dbn->s, dbn->len);
 		if(dbn->len+tbn->len<511)
 		{
 			strncpy(path, dbn->s, dbn->len);
@@ -120,16 +116,24 @@ dbt_table_p dbt_load_file(const str *tbn, const str *dbn)
 		strncpy(path, tbn->s, tbn->len);
 		path[tbn->len] = 0;
 	}
-	
 	LM_DBG("loading file [%s]\n", path);
+
 	fin = fopen(path, "rt");
-	if(!fin)
-		return NULL;	
-	
+	if(!fin) {
+		LM_ERR("failed to open file [%s]\n", path);
+		return NULL;
+	}
+
+	buf = pkg_malloc(_db_text_read_buffer_size);
+	if(!buf) {
+		LM_ERR("error allocating read buffer, %i\n", _db_text_read_buffer_size);
+		goto done;
+	}
+
 	dtp = dbt_table_new(tbn, dbn, path);
 	if(!dtp)
 		goto done;
-	
+
 	state = DBT_FLINE_ST;
 	crow = ccol = -1;
 	colp = colp0 = NULL;
@@ -232,7 +236,7 @@ dbt_table_p dbt_load_file(const str *tbn, const str *dbn)
 						c = fgetc(fin);
 					if(c=='N' || c=='n')
 					{
-						//LM_DBG("NULL flag set!\n");
+						LM_DBG("column[%d] NULL flag set!\n", ccol+1);
 						colp->flag |= DBT_FLAG_NULL;
 					}
 					else if(colp->type==DB1_INT && dtp->auto_col<0
@@ -408,10 +412,16 @@ dbt_table_p dbt_load_file(const str *tbn, const str *dbn)
 						
 						bp = 0;
 						if(c==DBT_DELIM || 
-								(ccol == dtp->nrcols-1
-								 && (c == DBT_DELIM_R || c==EOF)))
-							dtval.nul = 1;
-						else
+							(ccol == dtp->nrcols-1
+							 && (c == DBT_DELIM_R || c==EOF))) {
+							/* If empty_string is enabled, we'll just return
+							 * an empty string and avoid NULL
+							 */
+							if (empty_string == 0) {
+								/* Default - NULL */
+								dtval.nul = 1;
+							}
+						} else
 						{
 							dtval.nul = 0;
 							while(c!=DBT_DELIM && c!=DBT_DELIM_R && c!=EOF)
@@ -473,6 +483,8 @@ dbt_table_p dbt_load_file(const str *tbn, const str *dbn)
 done:
 	if(fin)
 		fclose(fin);
+	if(buf)
+		pkg_free(buf);
 	return dtp;
 clean:
 	// ????? FILL IT IN - incomplete row/column
@@ -480,6 +492,8 @@ clean:
 	LM_DBG("error at row=%d col=%d c=%c\n", crow+1, ccol+1, c);
 	if(dtp)
 		dbt_table_free(dtp);
+	if(buf)
+		pkg_free(buf);
 	return NULL;
 }
 

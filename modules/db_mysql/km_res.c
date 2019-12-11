@@ -1,6 +1,4 @@
 /* 
- * $Id$ 
- *
  * MySQL module result related functions
  *
  * Copyright (C) 2001-2003 FhG Fokus
@@ -20,7 +18,7 @@
  *
  * You should have received a copy of the GNU General Public License 
  * along with this program; if not, write to the Free Software 
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
 
@@ -32,7 +30,7 @@
 
 
 #include <string.h>
-#include <mysql/mysql.h>
+#include <mysql.h>
 #include "../../lib/srdb1/db_res.h"
 #include "../../mem/mem.h"
 #include "../../dprint.h"
@@ -69,6 +67,7 @@ int db_mysql_get_columns(const db1_con_t* _h, db1_res_t* _r)
 	}
 	
 	if (db_allocate_columns(_r, RES_COL_N(_r)) != 0) {
+		RES_COL_N(_r) = 0;
 		LM_ERR("could not allocate columns\n");
 		return -3;
 	}
@@ -173,6 +172,7 @@ static inline int db_mysql_convert_rows(const db1_con_t* _h, db1_res_t* _r)
 
 	if (db_allocate_rows(_r) < 0) {
 		LM_ERR("could not allocate rows");
+		RES_ROW_N(_r) = 0;
 		return -2;
 	}
 

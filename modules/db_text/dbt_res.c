@@ -1,6 +1,4 @@
 /*
- * $Id$
- *
  * DBText module core functions
  *
  * Copyright (C) 2001-2003 FhG Fokus
@@ -19,16 +17,8 @@
  *
  * You should have received a copy of the GNU General Public License 
  * along with this program; if not, write to the Free Software 
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
- * History:
- * --------
- * 2009-03-01 added support for ORDER-BY clause by Edgar Holleis
- * 2003-06-05 fixed bug: when comparing two values and the first was less than
- *           the second one, the result of 'dbt_row_match' was always true,
- *           thanks to Gabriel, (Daniel)
- * 2003-02-04 created by Daniel
- * 
  */
 
 #include <stdio.h>
@@ -102,7 +92,7 @@ clean:
 	return NULL;
 }
 
-int dbt_result_free(dbt_result_p _dres)
+int _dbt_result_free(dbt_result_p _dres)
 {
 	dbt_row_p _rp=NULL, _rp0=NULL;
 	int i;
@@ -113,19 +103,21 @@ int dbt_result_free(dbt_result_p _dres)
 	while(_rp)
 	{
 		_rp0=_rp;
+		_rp=_rp->next;
 		if(_rp0->fields)
 		{
 			for(i=0; i<_dres->nrcols; i++)
 			{
 				if((_dres->colv[i].type==DB1_STR 
-							|| _dres->colv[i].type==DB1_STRING)
+							|| _dres->colv[i].type==DB1_STRING
+							|| _dres->colv[i].type==DB1_BLOB
+							)
 						&& _rp0->fields[i].val.str_val.s)
 					pkg_free(_rp0->fields[i].val.str_val.s);
 			}
 			pkg_free(_rp0->fields);
 		}
 		pkg_free(_rp0);
-		_rp=_rp->next;
 	}
 	if(_dres->colv)
 	{
@@ -138,6 +130,22 @@ int dbt_result_free(dbt_result_p _dres)
 	}
 
 	pkg_free(_dres);
+
+	return 0;
+}
+
+int dbt_result_free(db1_con_t* _h, dbt_table_p _dres)
+{
+	if ((!_h))
+	{
+		LM_ERR("invalid parameter value\n");
+		return -1;
+	}
+
+	if (!_dres)
+		return 0;
+
+	dbt_db_del_table(DBT_CON_CONNECTION(_h), &_dres->name, 1);
 
 	return 0;
 }
@@ -206,6 +214,11 @@ int dbt_row_match(dbt_table_p _dtp, dbt_row_p _drp, int* _lkey,
 			if(res!=0)
 				return 0;
 		}else{
+		if(!strcmp(_op[i], OP_NEQ))
+		{
+			if(res==0)
+				return 0;
+		}else{
 		if(!strcmp(_op[i], OP_LT))
 		{
 			if(res!=-1)
@@ -227,7 +240,7 @@ int dbt_row_match(dbt_table_p _dtp, dbt_row_p _drp, int* _lkey,
 				return 0;
 		}else{
 			return 0;
-		}}}}}		
+		}}}}}}
 	}
 	return 1;
 }
@@ -319,45 +332,48 @@ clean:
 	return -1;
 }
 
-int dbt_result_print(dbt_result_p _dres)
+int dbt_result_print(dbt_table_p _dres)
 {
-#if 0
 	int i;
-	FILE *fout = stdout;
+	FILE *fout = stderr;
 	dbt_row_p rowp = NULL;
 	char *p;
 
-	if(!_dres || _dres->nrcols<=0)
+	if(!_dres || _dres->nrcols<=0) {
+		LM_INFO("NO PRINT\n");
 		return -1;
+	}
 
 	fprintf(fout, "\nContent of result\n");
 	
 	for(i=0; i<_dres->nrcols; i++)
 	{
-		switch(_dres->colv[i].type)
+		switch(_dres->colv[i]->type)
 		{
 			case DB1_INT:
-				fprintf(fout, "%.*s(int", _dres->colv[i].name.len,
-								_dres->colv[i].name.s);
-				if(_dres->colv[i].flag & DBT_FLAG_NULL)
+				fprintf(fout, "%.*s(int", _dres->colv[i]->name.len,
+								_dres->colv[i]->name.s);
+				if(_dres->colv[i]->flag & DBT_FLAG_NULL)
 					fprintf(fout, ",null");
 				fprintf(fout, ") ");
 			break;
 			case DB1_DOUBLE:
-				fprintf(fout, "%.*s(double", _dres->colv[i].name.len,
-							_dres->colv[i].name.s);
-				if(_dres->colv[i].flag & DBT_FLAG_NULL)
+				fprintf(fout, "%.*s(double", _dres->colv[i]->name.len,
+							_dres->colv[i]->name.s);
+				if(_dres->colv[i]->flag & DBT_FLAG_NULL)
 					fprintf(fout, ",null");
 				fprintf(fout, ") ");
 			break;
 			case DB1_STR:
-				fprintf(fout, "%.*s(str", _dres->colv[i].name.len,
-						_dres->colv[i].name.s);
-				if(_dres->colv[i].flag & DBT_FLAG_NULL)
+			case DB1_STRING:
+				fprintf(fout, "%.*s(str", _dres->colv[i]->name.len,
+						_dres->colv[i]->name.s);
+				if(_dres->colv[i]->flag & DBT_FLAG_NULL)
 					fprintf(fout, ",null");
 				fprintf(fout, ") ");
 			break;
 			default:
+				LM_INFO("TYPE NOT HANDLED %i\n", _dres->colv[i]->type);
 				return -1;
 		}
 	}
@@ -367,7 +383,7 @@ int dbt_result_print(dbt_result_p _dres)
 	{
 		for(i=0; i<_dres->nrcols; i++)
 		{
-			switch(_dres->colv[i].type)
+			switch(_dres->colv[i]->type)
 			{
 				case DB1_INT:
 					if(rowp->fields[i].nul)
@@ -384,6 +400,7 @@ int dbt_result_print(dbt_result_p _dres)
 								rowp->fields[i].val.double_val);
 				break;
 				case DB1_STR:
+				case DB1_STRING:
 					fprintf(fout, "\"");
 					if(!rowp->fields[i].nul)
 					{
@@ -426,7 +443,6 @@ int dbt_result_print(dbt_result_p _dres)
 		fprintf(fout, "\n");
 		rowp = rowp->next;
 	}
-#endif
 
 	return 0;
 }
@@ -454,7 +470,7 @@ int dbt_cmp_val(dbt_val_p _vp, db_val_t* _v)
 					(_vp->val.int_val>_v->val.int_val)?1:0;
 
 		case DB1_BIGINT:
-			LM_ERR("BIGINT not supported");
+			LM_ERR("BIGINT not supported\n");
 			return -1;
 
 		case DB1_DOUBLE:
@@ -499,8 +515,10 @@ int dbt_cmp_val(dbt_val_p _vp, db_val_t* _v)
 		case DB1_BITMAP:
 			return (_vp->val.int_val<_v->val.bitmap_val)?-1:
 				(_vp->val.int_val>_v->val.bitmap_val)?1:0;
+		default:
+			LM_ERR("invalid datatype %d\n", VAL_TYPE(_v));
+			return -2;
 	}
-	LM_ERR("invalid datatype %d\n", VAL_TYPE(_v));
 	return -2;
 }
 
@@ -526,6 +544,29 @@ dbt_row_p dbt_result_new_row(dbt_result_p _dres)
 
 	return _drp;
 }
+
+//dbt_row_p dbt_result_new_rows(dbt_row_p* _res, int rows, int cols)
+//{
+//	dbt_row_p _drp = NULL;
+//	if(!_dres || _dres->nrcols<=0)
+//		return NULL;
+//
+//	_drp = (dbt_row_p)shm_malloc(sizeof(dbt_row_t) * rows);
+//	if(!_drp)
+//		return NULL;
+//	memset(_drp, 0, sizeof(dbt_row_t));
+//	_drp->fields = (dbt_val_p)shm_malloc(_dres->nrcols*sizeof(dbt_val_t));
+//	if(!_drp->fields)
+//	{
+//		shm_free(_drp);
+//		return NULL;
+//	}
+//	memset(_drp->fields, 0, _dres->nrcols*sizeof(dbt_val_t));
+//
+//	_drp->next = _drp->prev = NULL;
+//
+//	return _drp;
+//}
 
 
 /* The _o clause to query is not really a db_key_t, it is SQL (str).
@@ -557,7 +598,7 @@ int dbt_parse_orderbyclause(db_key_t **_o_k, char **_o_op, int *_o_n, db_key_t _
 	memcpy(_po, _o->s, _o->len);
 	*(_po+_o->len) = '\0';
 
-	*_o_op = pkg_malloc(sizeof(db_op_t) * _n);
+	*_o_op = pkg_malloc(sizeof(char) * _n);
 	if (!*_o_op)
 	{
 		pkg_free(*_o_k);
@@ -747,7 +788,7 @@ int dbt_sort_result(dbt_result_p _dres, int *_o_l, char *_o_op, int _o_n, int *_
 	}
 
 	/* rewrite linked list to array */
-	_a = pkg_malloc(sizeof(dbt_row_t) * _dres->nrrows);
+	_a = pkg_malloc(sizeof(dbt_row_p) * _dres->nrrows);
 	if (!_a)
 		return -1;
 	for (_el=_dres->rows, _i=0; _el != NULL; _el=_el->next, _i++)
@@ -825,3 +866,129 @@ void dbt_project_result(dbt_result_p _dres, int _o_nc)
 	_dres->nrcols -= _o_nc;
 }
 
+/* comparison function for qsort */
+int dbt_qsort_compare_temp(const void *_a, const void *_b)
+{
+	int _i, _j, _r;
+
+	for (_i=0; _i<dbt_sort_o_n; _i++)
+	{
+		_j = dbt_sort_o_l[_i];
+		_r = dbt_cmp_val(&(*(dbt_row_p *)_a)->fields[_j], &(*(dbt_row_p *)_b)->fields[_j]);
+		if (_r == 0)
+			continue; /* no result yet, compare next column */
+		if (_r == +1 || _r == -1)
+			return (dbt_sort_o_op[_i] == '<') ? _r : -_r; /* ASC OR DESC */
+		/* error */
+		longjmp(dbt_sort_jmpenv, _r);
+	}
+
+	/* no result after comparing all columns, same */
+	return 0;
+}
+
+int dbt_sort_result_temp(dbt_row_p *_res, int count, int *_o_l, char *_o_op, int _o_n)
+{
+	int _i;
+
+	/* set globals */
+	dbt_sort_o_l = _o_l;
+	dbt_sort_o_op = _o_op;
+	dbt_sort_o_n = _o_n;
+	_i = setjmp(dbt_sort_jmpenv);  /* exception handling */
+	if (_i)
+	{
+		/* error occured during qsort */
+		LM_ERR("qsort aborted\n");
+		return _i;
+	}
+
+	qsort(_res, count, sizeof(dbt_row_p), &dbt_qsort_compare_temp);
+
+	return 0;
+}
+
+dbt_row_p dbt_result_extract_results(dbt_table_p _dtp, dbt_row_p* pRows, int _nrows, int* _lres, int _ncols)
+{
+	dbt_row_p pRow=NULL;
+	dbt_row_p pTopRow=NULL;
+	dbt_row_p pPrvRow=NULL;
+	int i, n, r;
+
+	if(!_dtp || !pRows || _ncols<=0)
+		return NULL;
+
+	for(r=0; r < _nrows; r++) {
+		pRow = dbt_row_new(_ncols);
+
+		for(i=0; i<_ncols; i++)
+		{
+			n = _lres[i];
+			pRow->fields[i].nul = pRows[r]->fields[n].nul;
+			if(pRow->fields[i].nul)
+			{
+				memset(&(pRow->fields[i].val), 0, sizeof(pRow->fields[i].val));
+				continue;
+			}
+
+			switch(_dtp->colv[n]->type)
+			{
+				case DB1_INT:
+				case DB1_DATETIME:
+				case DB1_BITMAP:
+					pRow->fields[i].type = _dtp->colv[n]->type;
+					pRow->fields[i].val.int_val = pRows[r]->fields[n].val.int_val;
+				break;
+				case DB1_DOUBLE:
+					pRow->fields[i].type = DB1_DOUBLE;
+					pRow->fields[i].val.double_val=pRows[r]->fields[n].val.double_val;
+				break;
+				case DB1_STRING:
+				case DB1_STR:
+				case DB1_BLOB:
+					pRow->fields[i].type = _dtp->colv[n]->type;
+					pRow->fields[i].val.str_val.len =
+							pRows[r]->fields[n].val.str_val.len;
+					pRow->fields[i].val.str_val.s =(char*)shm_malloc(sizeof(char)*
+							(pRows[r]->fields[n].val.str_val.len+1));
+					if(!pRow->fields[i].val.str_val.s)
+						goto clean;
+					memcpy(pRow->fields[i].val.str_val.s,
+							pRows[r]->fields[n].val.str_val.s,
+							pRows[r]->fields[n].val.str_val.len);
+					pRow->fields[i].val.str_val.s[pRows[r]->fields[n].val.str_val.len]=0;
+				break;
+				default:
+					goto clean;
+			}
+		}
+
+		if(pTopRow == NULL) {
+			pTopRow = pRow;
+		} else {
+			pRow->prev = pPrvRow;
+			pPrvRow->next = pRow;
+		}
+		pPrvRow = pRow;
+	}
+
+	return pTopRow;
+
+clean:
+	LM_DBG("make clean!\n");
+	while(i>=0)
+	{
+		if((pRow->fields[i].type == DB1_STRING
+					|| pRow->fields[i].type == DB1_STR
+					|| pRow->fields[i].type == DB1_BLOB)
+				&& !pRow->fields[i].nul
+				&& pRow->fields[i].val.str_val.s)
+			shm_free(pRow->fields[i].val.str_val.s);
+
+		i--;
+	}
+	shm_free(pRow->fields);
+	shm_free(pRow);
+
+	return pTopRow;
+}

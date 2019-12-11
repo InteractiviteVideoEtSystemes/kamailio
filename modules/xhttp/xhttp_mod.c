@@ -1,6 +1,4 @@
 /*
- * $Id$
- *
  * Copyright (C) 2010 Daniel-Constantin Mierla (asipto.com)
  *
  * This file is part of Kamailio, a free SIP server.
@@ -17,7 +15,7 @@
  *
  * You should have received a copy of the GNU General Public License 
  * along with this program; if not, write to the Free Software 
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
 
@@ -86,8 +84,8 @@ static pv_export_t mod_pvs[] = {
 };
 
 static param_export_t params[] = {
-	{"url_match",       STR_PARAM, &xhttp_url_match},
-	{"url_skip",        STR_PARAM, &xhttp_url_skip},
+	{"url_match",       PARAM_STRING, &xhttp_url_match},
+	{"url_skip",        PARAM_STRING, &xhttp_url_skip},
 	{0, 0, 0}
 };
 
@@ -199,7 +197,7 @@ static char* xhttp_to_sip(sip_msg_t* msg, int* new_msg_len)
 	struct hostport hp;
 	struct dest_info dst;
 	
-	ip.s = ip_addr2a(&msg->rcv.src_ip);
+	ip.s = ip_addr2strz(&msg->rcv.src_ip);
 	ip.len = strlen(ip.s);
 	port.s = int2str(msg->rcv.src_port, &port.len);
 	hp.host = &ip;
@@ -356,11 +354,12 @@ static int xhttp_handler(sip_msg_t* msg)
 		} else {
 			DBG("new fake msg created (%d bytes):\n<%.*s>\n",
 					fake_msg_len, fake_msg_len, fake_msg);
-			if (xhttp_process_request(msg, fake_msg, fake_msg_len)<0)
+			if (xhttp_process_request(msg, fake_msg, fake_msg_len)<0) {
 				ret=NONSIP_MSG_ERROR;
-				pkg_free(fake_msg);
 			}
-			return ret;
+			pkg_free(fake_msg);
+		}
+		return ret;
 	} else {
 		LM_DBG("http msg unchanged (%d bytes):\n<%.*s>\n",
 				msg->len, msg->len, msg->buf);
@@ -385,7 +384,7 @@ static int xhttp_send_reply(sip_msg_t *msg, int code, str *reason,
 		tbuf.len=sizeof("Content-Type: ") - 1 + ctype->len + CRLF_LEN;
 		tbuf.s=pkg_malloc(sizeof(char)*(tbuf.len));
 
-		if (tbuf.len==0)
+		if (tbuf.s==0)
 		{
 			LM_ERR("out of pkg memory\n");
 			return -1;
@@ -405,7 +404,7 @@ static int xhttp_send_reply(sip_msg_t *msg, int code, str *reason,
 
 	if(body!=NULL && body->len>0)
 	{
-		if (add_lump_rpl(msg, body->s, body->len, LUMP_RPL_BODY) < 0)
+		if (add_lump_rpl(msg, body->s, body->len, LUMP_RPL_BODY) == 0)
 		{
 			LM_ERR("Error while adding reply lump\n");
 			return -1;

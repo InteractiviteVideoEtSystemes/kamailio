@@ -1,6 +1,4 @@
-/**
- * $Id$
- *
+/*
  * Copyright (C) 2009 Daniel-Constantin Mierla (asipto.com) 
  *
  * Permission to use, copy, modify, and distribute this software for any
@@ -23,6 +21,7 @@
 #include "../../dprint.h"
 #include "../../xavp.h"
 #include "../../pvapi.h"
+#include "../../parser/parse_param.h"
 
 #include "pv_xavp.h"
 
@@ -112,6 +111,8 @@ int pv_get_xavp(struct sip_msg *msg, pv_param_t *param,
 		return pv_get_null(msg, param, res);
 	if(xname->next==NULL)
 		return pv_xavp_get_value(msg, param, res, avp);
+	if(avp->val.type != SR_XTYPE_XAVP)
+		return pv_get_null(msg, param, res);
 
 	idx = 0;
 	idxf = 0;
@@ -505,8 +506,10 @@ int pv_parse_xavp_name(pv_spec_p sp, str *in)
 		return -1;
 
 	xname = (pv_xavp_name_t*)pkg_malloc(sizeof(pv_xavp_name_t));
-	if(xname==NULL)
+	if(xname==NULL) {
+		LM_ERR("not enough pkg mem\n");
 		return -1;
+	}
 
 	memset(xname, 0, sizeof(pv_xavp_name_t));
 
@@ -529,9 +532,10 @@ int pv_parse_xavp_name(pv_spec_p sp, str *in)
 			xname->name.s, s.len, s.s);
 
 	xname->next = (pv_xavp_name_t*)pkg_malloc(sizeof(pv_xavp_name_t));
-	if(xname->next==NULL)
+	if(xname->next==NULL) {
+		LM_ERR("not enough pkg mem\n");
 		goto error;
-
+	}
 	memset(xname->next, 0, sizeof(pv_xavp_name_t));
 
 	p = pv_xavp_fill_ni(&s, xname->next);
@@ -557,4 +561,196 @@ int pv_xavp_print(struct sip_msg* msg, char* s1, char *s2)
 	return 1;
 }
 
+/**
+ *
+ */
+int xavp_params_explode(str *params, str *xname)
+{
+	param_t* params_list = NULL;
+	param_hooks_t phooks;
+	param_t *pit=NULL;
+	str s;
+	sr_xavp_t *xavp=NULL;
+	sr_xval_t xval;
+
+	if(params==NULL || xname==NULL || params->s==NULL || xname->s==NULL
+			|| params->len<=0 || xname->len<=0)
+	{
+		LM_ERR("invalid parameters\n");
+		return -1;
+	}
+
+	s.s = params->s;
+	s.len = params->len;
+	if(s.s[s.len-1]==';')
+		s.len--;
+	if (parse_params(&s, CLASS_ANY, &phooks, &params_list)<0) {
+		LM_DBG("invalid formatted values [%.*s]\n", params->len, params->s);
+		return -1;
+	}
+
+	if(params_list==NULL) {
+		return -1;
+	}
+
+
+	for (pit = params_list; pit; pit=pit->next)
+	{
+		memset(&xval, 0, sizeof(sr_xval_t));
+		xval.type = SR_XTYPE_STR;
+		xval.v.s = pit->body;
+		if(xavp_add_value(&pit->name, &xval, &xavp)==NULL) {
+			free_params(params_list);
+			xavp_destroy_list(&xavp);
+			return -1;
+		}
+	}
+	free_params(params_list);
+
+	/* add main xavp in root list */
+	memset(&xval, 0, sizeof(sr_xval_t));
+	xval.type = SR_XTYPE_XAVP;
+	xval.v.xavp = xavp;
+	if(xavp_add_value(xname, &xval, NULL)==NULL) {
+		xavp_destroy_list(&xavp);
+		return -1;
+	}
+
+	return 0;
+}
+
+int pv_var_to_xavp(str *varname, str *xname)
+{
+	script_var_t *it;
+	sr_xavp_t *avp = NULL;
+	sr_xval_t xval;
+
+	LM_DBG("xname:%.*s varname:%.*s\n", xname->len, xname->s,
+		varname->len, varname->s);
+
+	// clean xavp
+	xavp_rm_by_name(xname, 1, NULL);
+
+	if(varname->len==1 && varname->s[0] == '*') {
+		for(it=get_var_all(); it; it=it->next) {
+			memset(&xval, 0, sizeof(sr_xval_t));
+			if(it->v.flags==VAR_VAL_INT)
+			{
+				xval.type = SR_XTYPE_INT;
+				xval.v.i = it->v.value.n;
+				LM_DBG("[%.*s]: %d\n", it->name.len, it->name.s, xval.v.i);
+			} else {
+				if(it->v.value.s.len==0) continue;
+				xval.type = SR_XTYPE_STR;
+				xval.v.s.s = it->v.value.s.s;
+				xval.v.s.len = it->v.value.s.len;
+				LM_DBG("[%.*s]: '%.*s'\n", it->name.len, it->name.s,
+					xval.v.s.len, xval.v.s.s);
+			}
+			if(xavp_add_value(&it->name, &xval, &avp)==NULL) {
+				LM_ERR("can't copy [%.*s]\n", it->name.len, it->name.s);
+				goto error;
+			}
+		}
+		if(avp) {
+			memset(&xval, 0, sizeof(sr_xval_t));
+			xval.type = SR_XTYPE_XAVP;
+			xval.v.xavp = avp;
+			if(xavp_add_value(xname, &xval, NULL)==NULL) {
+				LM_ERR("Can't create xavp[%.*s]\n", xname->len, xname->s);
+				goto error;
+			}
+		}
+	}
+	else {
+		it = get_var_by_name(varname);
+		if(it==NULL) {
+			LM_ERR("script var [%.*s] not found\n", varname->len, varname->s);
+			return -1;
+		}
+		memset(&xval, 0, sizeof(sr_xval_t));
+		if(it->v.flags==VAR_VAL_INT)
+		{
+			xval.type = SR_XTYPE_INT;
+			xval.v.i = it->v.value.n;
+			LM_DBG("[%.*s]: %d\n", it->name.len, it->name.s, xval.v.i);
+		} else {
+			xval.type = SR_XTYPE_STR;
+			xval.v.s.s = it->v.value.s.s;
+			xval.v.s.len = it->v.value.s.len;
+			LM_DBG("[%.*s]: '%.*s'\n", it->name.len, it->name.s,
+					xval.v.s.len, xval.v.s.s);
+		}
+		if(xavp_add_xavp_value(xname, &it->name, &xval, NULL)==NULL) {
+			LM_ERR("can't copy [%.*s]\n", it->name.len, it->name.s);
+			return -1;
+		}
+	}
+	return 1;
+
+error:
+	if(avp) xavp_destroy_list(&avp);
+	return -1;
+}
+
+int pv_xavp_to_var_helper(sr_xavp_t *avp) {
+	script_var_t *it;
+	int_str value;
+	int flags = 0;
+
+	it = add_var(&avp->name, VAR_TYPE_ZERO);
+	if(!it)	return -1;
+	if(avp->val.type==SR_XTYPE_STR){
+		flags |= VAR_VAL_STR;
+		value.s.len = avp->val.v.s.len;
+		value.s.s = avp->val.v.s.s;
+		LM_DBG("var:[%.*s] STR:[%.*s]\n", avp->name.len, avp->name.s,
+			value.s.len, value.s.s);
+	}
+	else if(avp->val.type==SR_XTYPE_INT) {
+		flags |= VAR_VAL_INT;
+		value.n = avp->val.v.i;
+		LM_DBG("var:[%.*s] INT:[%d]\n", avp->name.len, avp->name.s,
+			value.n);
+	} else {
+		LM_ERR("avp type not STR nor INT\n");
+		return -1;
+	}
+	set_var_value(it, &value, flags);
+
+	return 0;
+}
+
+int pv_xavp_to_var(str *xname) {
+	sr_xavp_t *xavp;
+	sr_xavp_t *avp;
+
+	LM_DBG("xname:%.*s\n", xname->len, xname->s);
+
+	xavp = xavp_get_by_index(xname, 0, NULL);
+	if(!xavp) {
+		LM_ERR("xavp [%.*s] not found\n", xname->len, xname->s);
+		return -1;
+	}
+	if(xavp->val.type!=SR_XTYPE_XAVP){
+		LM_ERR("%.*s not xavp type?\n", xname->len, xname->s);
+		return -1;
+	}
+	do {
+		avp = xavp->val.v.xavp;
+		if (avp)
+		{
+			if(pv_xavp_to_var_helper(avp)<0) return -1;
+			avp = avp->next;
+		}
+
+		while(avp)
+		{
+			if(pv_xavp_to_var_helper(avp)<0) return -1;
+			avp = avp->next;
+		}
+		xavp = xavp_get_next(xavp);
+	} while(xavp);
+	return 1;
+}
 #endif

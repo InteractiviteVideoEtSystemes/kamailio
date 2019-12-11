@@ -1,6 +1,4 @@
 /* 
- * $Id$
- *
  * Copyright (C) 2013 Crocodile RCS Ltd
  *
  * This file is part of Kamailio, a free SIP server.
@@ -17,8 +15,9 @@
  *
  * You should have received a copy of the GNU General Public License 
  * along with this program; if not, write to the Free Software 
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
+
 #include "../../pvar.h"
 #include "../../str.h"
 #include "../../trim.h"
@@ -65,7 +64,7 @@ int xhttp_tr_eval_xhttpurl(struct sip_msg *msg, tr_param_t *tp, int subtype,
 		_httpurl_str.len = val->rs.len;
 		memcpy(_httpurl_str.s, val->rs.s, val->rs.len);
 
-		while (val->rs.s[pos] != '?' && pos < val->rs.len) pos++;
+		while (pos < val->rs.len && val->rs.s[pos] != '?') pos++;
 		_httpurl_querystring_pos = (pos >= val->rs.len) ? 0 : pos + 1;
 	}
 

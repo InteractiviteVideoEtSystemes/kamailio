@@ -18,7 +18,7 @@
  *
  * You should have received a copy of the GNU General Public License 
  * along with this program; if not, write to the Free Software 
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  * History:
  * --------
@@ -46,17 +46,17 @@
 
 #define TABLE_VERSION 6
 
-struct addr_list ***addr_hash_table; /* Ptr to current hash table ptr */
-struct addr_list **addr_hash_table_1;     /* Pointer to hash table 1 */
-struct addr_list **addr_hash_table_2;     /* Pointer to hash table 2 */
+struct addr_list ***addr_hash_table = NULL; /* Ptr to current hash table ptr */
+struct addr_list **addr_hash_table_1 = NULL; /* Pointer to hash table 1 */
+struct addr_list **addr_hash_table_2 = NULL; /* Pointer to hash table 2 */
 
-struct subnet **subnet_table;        /* Ptr to current subnet table */
-struct subnet *subnet_table_1;       /* Ptr to subnet table 1 */
-struct subnet *subnet_table_2;       /* Ptr to subnet table 2 */
+struct subnet **subnet_table = NULL;  /* Ptr to current subnet table */
+struct subnet *subnet_table_1 = NULL; /* Ptr to subnet table 1 */
+struct subnet *subnet_table_2 = NULL; /* Ptr to subnet table 2 */
 
-struct domain_name_list ***domain_list_table;        /* Ptr to current domain name table */
-static struct domain_name_list **domain_list_table_1;       /* Ptr to domain name table 1 */
-static struct domain_name_list **domain_list_table_2;       /* Ptr to domain name table 2 */
+struct domain_name_list ***domain_list_table = NULL; /* Ptr to current domain name table */
+static struct domain_name_list **domain_list_table_1 = NULL; /* Ptr to domain name table 1 */
+static struct domain_name_list **domain_list_table_2 = NULL; /* Ptr to domain name table 2 */
 
 
 static db1_con_t* db_handle = 0;
@@ -480,13 +480,21 @@ int allow_address(struct sip_msg* _msg, char* _addr_group, char* _addr_sp,
 	}
 
 	if ( ipa ) {
-		if (match_addr_hash_table(*addr_hash_table, addr_group, ipa, port) == 1)
+		if (addr_hash_table
+				&& match_addr_hash_table(*addr_hash_table, addr_group,
+					ipa, port) == 1) {
 			return 1;
-		else
-			return match_subnet_table(*subnet_table, addr_group, ipa, port);
+		} else {
+			if(subnet_table) {
+				return match_subnet_table(*subnet_table, addr_group, ipa, port);
+			}
+		}
 	} else {
-		return match_domain_name_table(*domain_list_table, addr_group, &ips, port);
+		if(domain_list_table) {
+			return match_domain_name_table(*domain_list_table, addr_group, &ips, port);
+		}
 	}
+	return -1;
 }
 
 
@@ -507,14 +515,17 @@ int allow_source_address(struct sip_msg* _msg, char* _addr_group, char* _str2)
 	LM_DBG("looking for <%u, %x, %u>\n",
 			addr_group, _msg->rcv.src_ip.u.addr32[0], _msg->rcv.src_port);
 
-	if (match_addr_hash_table(*addr_hash_table, addr_group,
-				&_msg->rcv.src_ip,
-				_msg->rcv.src_port) == 1)
+	if (addr_hash_table && match_addr_hash_table(*addr_hash_table, addr_group,
+				&_msg->rcv.src_ip, _msg->rcv.src_port) == 1) {
 		return 1;
-	else
-		return match_subnet_table(*subnet_table, addr_group,
+	} else {
+		if(subnet_table) {
+			return match_subnet_table(*subnet_table, addr_group,
 				&_msg->rcv.src_ip,
 				_msg->rcv.src_port);
+		}
+	}
+	return -1;
 }
 
 
@@ -525,22 +536,24 @@ int allow_source_address(struct sip_msg* _msg, char* _addr_group, char* _str2)
  */
 int allow_source_address_group(struct sip_msg* _msg, char* _str1, char* _str2) 
 {
-	int group;
+	int group = -1;
 
 	LM_DBG("looking for <%x, %u> in address table\n",
 			_msg->rcv.src_ip.u.addr32[0], _msg->rcv.src_port);
-	group = find_group_in_addr_hash_table(*addr_hash_table,
-			&_msg->rcv.src_ip,
-			_msg->rcv.src_port);
-	LM_DBG("Found <%d>\n", group);
+	if(addr_hash_table) {
+		group = find_group_in_addr_hash_table(*addr_hash_table,
+					&_msg->rcv.src_ip, _msg->rcv.src_port);
+		LM_DBG("Found <%d>\n", group);
 
-	if (group != -1) return group;
+		if (group != -1) return group;
+	}
 
 	LM_DBG("looking for <%x, %u> in subnet table\n",
 			_msg->rcv.src_ip.u.addr32[0], _msg->rcv.src_port);
-	group = find_group_in_subnet_table(*subnet_table,
-			&_msg->rcv.src_ip,
-			_msg->rcv.src_port);
+	if(subnet_table) {
+		group = find_group_in_subnet_table(*subnet_table,
+				&_msg->rcv.src_ip, _msg->rcv.src_port);
+	}
 	LM_DBG("Found <%d>\n", group);
 	return group;
 
@@ -553,7 +566,7 @@ int allow_source_address_group(struct sip_msg* _msg, char* _str1, char* _str2)
  */
 int allow_address_group(struct sip_msg* _msg, char* _addr, char* _port)
 {
-	int group;
+	int group = -1;
 
 	unsigned int port;
 	str ips;
@@ -575,24 +588,30 @@ int allow_address_group(struct sip_msg* _msg, char* _addr, char* _port)
 	if ( ipa ) {
 		LM_DBG("looking for <%.*s, %u> in address table\n",
 				ips.len, ips.s, port);
-		group = find_group_in_addr_hash_table(*addr_hash_table,
-				ipa, port);
-		LM_DBG("Found address in group <%d>\n", group);
+		if(addr_hash_table) {
+			group = find_group_in_addr_hash_table(*addr_hash_table,
+						ipa, port);
+			LM_DBG("Found address in group <%d>\n", group);
 
-		if (group != -1) return group;
-
-		LM_DBG("looking for <%.*s, %u> in subnet table\n",
-				ips.len, ips.s, port);
-		group = find_group_in_subnet_table(*subnet_table,
-				ipa, port);
-		LM_DBG("Found a match of subnet in group <%d>\n", group);
+			if (group != -1) return group;
+		}
+		if(subnet_table) {
+			LM_DBG("looking for <%.*s, %u> in subnet table\n",
+					ips.len, ips.s, port);
+			group = find_group_in_subnet_table(*subnet_table,
+						ipa, port);
+			LM_DBG("Found a match of subnet in group <%d>\n", group);
+		}
 	} else {
 		LM_DBG("looking for <%.*s, %u> in domain_name table\n",
 				ips.len, ips.s, port);
-		group = find_group_in_domain_name_table(*domain_list_table,
-				&ips, port);
-		LM_DBG("Found a match of domain_name in group <%d>\n", group);
+		if(domain_list_table) {
+			group = find_group_in_domain_name_table(*domain_list_table,
+						&ips, port);
+			LM_DBG("Found a match of domain_name in group <%d>\n", group);
+		}
 	}
 
+	LM_DBG("Found <%d>\n", group);
 	return group;
 }

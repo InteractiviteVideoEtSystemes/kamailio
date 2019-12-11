@@ -1,6 +1,4 @@
-/**
- * $Id$
- *
+/*
  * Copyright (C) 2009 Daniel-Constantin Mierla (asipto.com)
  * Copyright (C) 2011 Carsten Bock, carsten@ng-voice.com
  *
@@ -18,7 +16,14 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+
+/*!
+ * \file
+ * \brief Dialog variables
+ * \ingroup dialog
+ * Module: \ref dialog
  */
 		       
 #include "../../route.h"
@@ -35,13 +40,16 @@ dlg_ctx_t _dlg_ctx;
 extern int spiral_detected;
 
 /*! global variable table, in case the dialog does not exist yet */
-struct dlg_var * var_table = 0;
+static struct dlg_var *_dlg_var_table = 0;
 /*! ID of the current message */
 int msg_id;
 
 int dlg_cfg_cb(sip_msg_t *msg, unsigned int flags, void *cbp)
 {
 	dlg_cell_t *dlg;
+	if(get_route_type()==LOCAL_ROUTE) {
+		return 1;
+	}
 	if(flags&POST_SCRIPT_CB) {
 		dlg = dlg_get_ctx_dialog();
 		if(dlg!=NULL) {
@@ -51,10 +59,10 @@ int dlg_cfg_cb(sip_msg_t *msg, unsigned int flags, void *cbp)
 					/* release to destroy dialog if created by this process
 					 * and request was not forwarded */
 					if(dlg->state==DLG_STATE_UNCONFIRMED) {
-						LM_DBG("new dialog with no trasaction after config"
+						LM_DBG("new dialog with no transaction after config"
 									" execution\n");
 					} else {
-						LM_DBG("dialog with no expected trasaction after"
+						LM_DBG("dialog with no expected transaction after"
 								" config execution\n");
 					}
 					dlg_release(dlg);
@@ -71,6 +79,9 @@ int dlg_cfg_cb(sip_msg_t *msg, unsigned int flags, void *cbp)
 
 int cb_dlg_cfg_reset(sip_msg_t *msg, unsigned int flags, void *cbp)
 {
+	if(get_route_type()==LOCAL_ROUTE) {
+		return 1;
+	}
 	memset(&_dlg_ctx, 0, sizeof(dlg_ctx_t));
 
 	return 1;
@@ -78,6 +89,9 @@ int cb_dlg_cfg_reset(sip_msg_t *msg, unsigned int flags, void *cbp)
 
 int cb_dlg_locals_reset(sip_msg_t *msg, unsigned int flags, void *cbp)
 {
+	if(get_route_type()==LOCAL_ROUTE) {
+		return 1;
+	}
 	LM_DBG("resetting the local dialog shortcuts on script callback: %u\n", flags);
 	cb_dlg_cfg_reset(msg, flags, cbp);
 	cb_profile_reset(msg, flags, cbp);
@@ -94,20 +108,21 @@ static inline struct dlg_var *new_dlg_var(str *key, str *val)
 		LM_ERR("no more shm mem\n");
 		return NULL;
 	}
-	var->next = NULL;
+	memset(var, 0, sizeof(struct dlg_var));
 	var->vflags = DLG_FLAG_NEW;
 	/* set key */
 	var->key.len = key->len;
-	var->key.s = (char*)shm_malloc(var->key.len);
+	var->key.s = (char*)shm_malloc(var->key.len+1);
 	if (var->key.s==NULL) {
 		shm_free(var);			
 		LM_ERR("no more shm mem\n");
 		return NULL;
 	}
 	memcpy(var->key.s, key->s, key->len);
+	var->key.s[var->key.len] = '\0';
 	/* set value */
 	var->value.len = val->len;
-	var->value.s = (char*)shm_malloc(var->value.len);
+	var->value.s = (char*)shm_malloc(var->value.len+1);
 	if (var->value.s==NULL) {
 		shm_free(var->key.s);			
 		shm_free(var);			
@@ -115,19 +130,21 @@ static inline struct dlg_var *new_dlg_var(str *key, str *val)
 		return NULL;
 	}
 	memcpy(var->value.s, val->s, val->len);
+	var->value.s[var->value.len] = '\0';
 	return var;
 }
 
 /*! Delete the current var-list */
 void free_local_varlist() {
 	struct dlg_var *var;
-	while (var_table) {
-		var = var_table;
-		var_table = var_table->next;
+	while (_dlg_var_table) {
+		var = _dlg_var_table;
+		_dlg_var_table = _dlg_var_table->next;
 		shm_free(var->key.s);
 		shm_free(var->value.s);
 		shm_free(var);
 	}
+	_dlg_var_table = NULL;
 }
 
 /*! Retrieve the local var-list pointer */
@@ -138,9 +155,9 @@ struct dlg_var * get_local_varlist_pointer(struct sip_msg *msg, int clear_pointe
 		free_local_varlist();
 		msg_id = msg->id;
 	}
-	var = var_table;
+	var = _dlg_var_table;
 	if (clear_pointer)
-		var_table = NULL;
+		_dlg_var_table = NULL;
 	return var;
 }
 
@@ -155,7 +172,7 @@ int set_dlg_variable_unsafe(struct dlg_cell *dlg, str *key, str *val)
 	if (dlg) 
 		var_list = &dlg->vars;
 	else 
-		var_list = &var_table;
+		var_list = &_dlg_var_table;
 
 	if ( val && (var=new_dlg_var(key, val))==NULL) {
 		LM_ERR("failed to create new dialog variable\n");
@@ -177,7 +194,7 @@ int set_dlg_variable_unsafe(struct dlg_cell *dlg, str *key, str *val)
 				/* replace the current it with var and free the it */
 				var->next = it->next;
 				/* Take the previous vflags: */
-				var->vflags = it->vflags & DLG_FLAG_CHANGED;
+				var->vflags = it->vflags | DLG_FLAG_CHANGED;
 				if (it_prev) it_prev->next = var;
 				else *var_list = var;				  
 			}
@@ -210,7 +227,7 @@ str * get_dlg_variable_unsafe(struct dlg_cell *dlg, str *key)
 	if (dlg) 
 		var_list = dlg->vars;
 	else
-		var_list = var_table;
+		var_list = _dlg_var_table;
 
 	/* iterate the list */
 	for(var=var_list ; var ; var=var->next) {
@@ -238,7 +255,7 @@ int pv_parse_dialog_var_name(pv_spec_p sp, str *in)
 /*! Internal debugging function: Prints the list of dialogs */
 void print_lists(struct dlg_cell *dlg) {
 	struct dlg_var *varlist;
-	varlist = var_table;
+	varlist = _dlg_var_table;
 	LM_DBG("Internal var-list (%p):\n", varlist);
 	while (varlist) {
 		LM_DBG("%.*s=%.*s (flags %i)\n",
@@ -466,6 +483,7 @@ int pv_set_dlg_ctx(struct sip_msg* msg, pv_param_t *param,
 		int op, pv_value_t *val)
 {
 	int n;
+	int rlen;
 	char *rtp;
 
 	if(param==NULL)
@@ -492,13 +510,15 @@ int pv_set_dlg_ctx(struct sip_msg* msg, pv_param_t *param,
 						&& val->rs.len<DLG_TOROUTE_SIZE) {
 					_dlg_ctx.to_route = route_lookup(&main_rt, val->rs.s);
 					strcpy(_dlg_ctx.to_route_name, val->rs.s);
-				} else _dlg_ctx.to_route = 0;
+				} else { _dlg_ctx.to_route = 0; }
 			} else {
 				if(n!=0) {
-					rtp = int2str(n, NULL);
-					_dlg_ctx.to_route = route_lookup(&main_rt, rtp);
-					strcpy(_dlg_ctx.to_route_name, rtp);
-				} else _dlg_ctx.to_route = 0;
+					rtp = int2str(n, &rlen);
+					if(rlen<DLG_TOROUTE_SIZE) {
+						_dlg_ctx.to_route = route_lookup(&main_rt, rtp);
+						strcpy(_dlg_ctx.to_route_name, rtp);
+					} else { _dlg_ctx.to_route = 0; }
+				} else { _dlg_ctx.to_route = 0; }
 			}
 			if(_dlg_ctx.to_route <0) _dlg_ctx.to_route = 0;
 		break;
@@ -869,8 +889,8 @@ int pv_parse_dlg_name(pv_spec_p sp, str *in)
 			else goto error;
 		break;
 		case 13: 
-			if(strncmp(in->s, "from_bindaddr", 20)==0)
-				sp->pvp.pvn.u.isname.name.n = 2;
+			if(strncmp(in->s, "from_bindaddr", 13)==0)
+				sp->pvp.pvn.u.isname.name.n = 20;
 			else goto error;
 		break;
 		default:
@@ -910,6 +930,9 @@ dlg_ctx_t* dlg_get_dlg_ctx(void)
 
 int spiral_detect_reset(struct sip_msg *foo, unsigned int flags, void *bar)
 {
+	if(get_route_type()==LOCAL_ROUTE) {
+		return 1;
+	}
 	spiral_detected = -1;
 
 	return 0;

@@ -1,9 +1,7 @@
 /*
- * $Id$
- *
  * hep related functions
  *
- * Copyright (C) 2011-12 Alexandr Dubovikov <alexandr.dubovikov@gmail.com>
+ * Copyright (C) 2011-14 Alexandr Dubovikov <alexandr.dubovikov@gmail.com>
  *
  * This file is part of Kamailio, a free SIP server.
  *
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
 
@@ -31,17 +29,22 @@
 #include "../../mem/mem.h"
 #include "../../mem/shm_mem.h"
 #include "../../lib/srdb1/db.h"
+#include "../../receive.h"
 
 #include "hep.h"
+#include "sipcapture.h"
+
+
 
 static int count = 0;
 
-struct hep_timehdr* heptime;
+struct hep_timeinfo* heptime;
 
 /* HEPv2 HEPv3 */
 int hepv2_received(char *buf, unsigned int len, struct receive_info *ri);
 int hepv3_received(char *buf, unsigned int len, struct receive_info *ri);
 int parsing_hepv3_message(char *buf, unsigned int len);
+
 /**
  * HEP message
  */
@@ -63,6 +66,9 @@ int hep_msg_received(void *data)
         buf = (char *)srevp[0];
         len = (unsigned *)srevp[1];
         ri = (struct receive_info *)srevp[2];                        
+
+	correlation_id = NULL;
+	authkey = NULL;
 
 	count++;
         struct hep_hdr *heph;
@@ -95,9 +101,12 @@ int hepv2_received(char *buf, unsigned int len, struct receive_info *ri){
         struct hep_iphdr *hepiph = NULL;
 
 	struct hep_timehdr* heptime_tmp = NULL;
-        memset(heptime, 0, sizeof(struct hep_timehdr));
+        memset(heptime, 0, sizeof(struct hep_timeinfo));
 
         struct hep_ip6hdr *hepip6h = NULL;
+            	        
+	correlation_id = NULL;
+	authkey = NULL;
 
 	hep_offset = 0; 
 	
@@ -131,7 +140,7 @@ int hepv2_received(char *buf, unsigned int len, struct receive_info *ri){
         else if(heph->hp_p == IPPROTO_SCTP) ri->proto=PROTO_SCTP;
 #endif
         else {
-        	LOG(L_ERR, "ERROR: sipcapture:hep_msg_received: unknow protocol [%d]\n",heph->hp_p);
+        	LOG(L_ERR, "ERROR: sipcapture:hep_msg_received: unknown protocol [%d]\n",heph->hp_p);
                 ri->proto = PROTO_NONE;
 	}
 
@@ -208,8 +217,7 @@ int hepv2_received(char *buf, unsigned int len, struct receive_info *ri){
 
         hep_payload = buf + hep_offset;
 
-        receive_msg(hep_payload,(unsigned int)(len - hep_offset) , ri);
-	//memset(buf, '\n', hep_offset); /* the parser will ignore the starting \n no need to do expensive memmove */
+        receive_msg(hep_payload,(unsigned int)(len - hep_offset), ri);
 	
 	return -1;
 }
@@ -255,7 +263,7 @@ int parsing_hepv3_message(char *buf, unsigned int len) {
 	memset(hg, 0, sizeof(struct hep_generic_recv));
 
 	
-        memset(heptime, 0, sizeof(struct hep_timehdr));	
+        memset(heptime, 0, sizeof(struct hep_timeinfo));	
 	        
 
 	/* HEADER */
@@ -270,6 +278,8 @@ int parsing_hepv3_message(char *buf, unsigned int len) {
         src_ip.af = 0;
                 	        
 	payload = NULL;
+	correlation_id = NULL;
+	authkey = NULL;
 
 	i = sizeof(hep_ctrl_t);	        
 	        
@@ -385,8 +395,7 @@ int parsing_hepv3_message(char *buf, unsigned int len) {
                                 case 12:
                                         hg->capt_id  = (hep_chunk_uint32_t *) (tmp);
                                         i+=chunk_length;
-                                        heptime->captid = ntohs(hg->capt_id->data);
-                                        //LM_ERR("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX: [%i] vs [%i]\n", heptime->captid, ntohl(hg->capt_id->data));
+                                        heptime->captid = ntohl(hg->capt_id->data);
                                         totelem++;
                                         break;
 
@@ -396,7 +405,7 @@ int parsing_hepv3_message(char *buf, unsigned int len) {
                                         break;                                                     
 
                                 case 14:
-                                        hg->auth_key  = (hep_chunk_str_t *) (tmp);
+                                        authkey = (char *) tmp + sizeof(hep_chunk_t);
                                         i+=chunk_length;                                                                             
                                         break;
                                                      
@@ -407,6 +416,12 @@ int parsing_hepv3_message(char *buf, unsigned int len) {
                                         i+=chunk_length;
                                         totelem++;
                                         break;
+                                case 17:
+                                
+                                        correlation_id = (char *) tmp + sizeof(hep_chunk_t);
+                                        i+=chunk_length;                                                                            
+					break;
+
                                                      
                                 default:
                                         i+=chunk_length;
@@ -472,14 +487,18 @@ int parsing_hepv3_message(char *buf, unsigned int len) {
 	/*TIME*/ 
         heptime->tv_sec = hg->time_sec->data;
         heptime->tv_usec = hg->time_usec->data;
-        heptime->captid = ntohs(hg->capt_id->data);
+        heptime->captid = ntohl(hg->capt_id->data);
           
- 
+
         if(payload != NULL ) {
                 /* and now recieve message */
-                receive_msg(payload, payload_len, &ri);
+                if (hg->proto_t->data == 5) receive_logging_json_msg(payload, payload_len, hg, "rtcp_capture");
+                else if (hg->proto_t->data == 32) receive_logging_json_msg(payload, payload_len, hg, "report_capture");
+                else if (hg->proto_t->data == 99) receive_logging_json_msg(payload, payload_len, hg, "report_capture");
+                else if (hg->proto_t->data == 100) receive_logging_json_msg(payload, payload_len, hg, "logs_capture");
+                else receive_msg(payload, payload_len, &ri);
         }
-        
+
 done:
         if(si) pkg_free(si);
         if(hg) pkg_free(hg);                     
@@ -494,8 +513,5 @@ error:
         return -1;           
         
 }
-
-
-
 
 

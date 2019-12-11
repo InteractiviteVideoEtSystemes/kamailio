@@ -1,6 +1,4 @@
 /* 
- * $Id$
- *
  * Copyright (C) 2001-2003 FhG Fokus
  *
  * This file is part of Kamailio, a free SIP server.
@@ -17,18 +15,8 @@
  *
  * You should have received a copy of the GNU General Public License 
  * along with this program; if not, write to the Free Software 
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
- * History:
- * --------
- *  2003-03-11  converted to the new locking interface: locking.h --
- *               major changes (andrei)
- *  2005-05-02  flags field added to node stucture -better sync between timer
- *              and worker processes; some races eliminated (bogdan)
- *  2008-04-17  new parameter to control the module's log regarding the
- *               blocking/unblocking of IPs (bogdan)
- *  2008-04-17  the leaf nodes memorize (via flags) if they are in RED state
- *               (detected) or not -> better logging and MI (bogdan)
  */
 
 
@@ -184,7 +172,7 @@ void clean_routine(unsigned int ticks , void *param)
 	/* LM_DBG("entering (%d)\n",ticks); */
 	/* before locking check first if the list is not empty and if can
 	 * be at least one element removed */
-	if ( is_list_empty( timer )) return; /* quick exit */
+	if (timer==0 || is_list_empty( timer )) return; /* quick exit */
 
 	/* get the expired elements */
 	lock_get( timer_lock );

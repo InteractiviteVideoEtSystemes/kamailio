@@ -1,6 +1,4 @@
 /*
- * $Id$
- *
  * DBText library
  *
  * Copyright (C) 2001-2003 FhG Fokus
@@ -19,11 +17,7 @@
  *
  * You should have received a copy of the GNU General Public License 
  * along with this program; if not, write to the Free Software 
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- * 
- * History:
- * --------
- * 2003-01-30 created by Daniel
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  * 
  */
 
@@ -45,6 +39,8 @@ static dbt_cache_p *_dbt_cachedb = NULL;
 static gen_lock_t *_dbt_cachesem = NULL;
 
 static dbt_tbl_cachel_p _dbt_cachetbl = NULL;
+
+extern int is_main;
 
 #define DBT_CACHETBL_SIZE	16
 
@@ -264,13 +260,14 @@ dbt_table_p dbt_db_get_table(dbt_cache_p _dc, const str *_s)
 	int hashidx;
 
 	if(!_dbt_cachetbl || !_dc || !_s || !_s->s || _s->len<=0) {
-		LM_ERR("invalid parameter");
+		LM_ERR("invalid parameter\n");
 		return NULL;
 	}
 
 	hash = core_hash(&_dc->name, _s, DBT_CACHETBL_SIZE);
 	hashidx = hash % DBT_CACHETBL_SIZE;
 		
+	if(!is_main)
 	lock_get(&_dbt_cachetbl[hashidx].sem);
 
 	_tbc = _dbt_cachetbl[hashidx].dtp;
@@ -304,7 +301,7 @@ dbt_table_p dbt_db_get_table(dbt_cache_p _dc, const str *_s)
 
 	if(!_tbc)
 	{
-		LM_ERR("could not load database from file [%.*s]", _s->len, _s->s);
+		LM_ERR("could not load database from file [%.*s]\n", _s->len, _s->s);
 		lock_release(&_dbt_cachetbl[hashidx].sem);
 		return NULL;
 	}
@@ -386,7 +383,7 @@ int dbt_cache_destroy(void)
 /**
  *
  */
-int dbt_cache_print(int _f)
+int dbt_cache_print2(int _f, int _lock)
 {
 	int i;
 	dbt_table_p _tbc;
@@ -396,10 +393,12 @@ int dbt_cache_print(int _f)
 	
 	for(i=0; i< DBT_CACHETBL_SIZE; i++)
 	{
-		lock_get(&_dbt_cachetbl[i].sem);
+		if(_lock)
+			lock_get(&_dbt_cachetbl[i].sem);
 		_tbc = _dbt_cachetbl[i].dtp;
 		while(_tbc)
 		{
+			if(! (_tbc->flag & DBT_TBFL_TEMP)) {
 			if(_f)
 				fprintf(stdout, "\n--- Database [%.*s]\n", _tbc->dbname.len,
 								_tbc->dbname.s);
@@ -418,13 +417,20 @@ int dbt_cache_print(int _f)
 					dbt_table_update_flags(_tbc,DBT_TBFL_MODI, DBT_FL_UNSET, 0);
 				}
 			}
+			}
 			_tbc = _tbc->next;
 		}
-		lock_release(&_dbt_cachetbl[i].sem);
+		if(_lock)
+			lock_release(&_dbt_cachetbl[i].sem);
 	}
 	
 	return 0;
 }
+
+int dbt_cache_print(int _f)
+{
+	return dbt_cache_print2(_f, !is_main);
+}	
 
 int dbt_is_neq_type(db_type_t _t0, db_type_t _t1)
 {
@@ -438,7 +444,7 @@ int dbt_is_neq_type(db_type_t _t0, db_type_t _t1)
 				return 0;
 
 		case DB1_BIGINT:
-			LM_ERR("BIGINT not supported");
+			LM_ERR("BIGINT not supported\n");
 			return 0;
 
 		case DB1_DATETIME:
@@ -449,18 +455,65 @@ int dbt_is_neq_type(db_type_t _t0, db_type_t _t1)
 		case DB1_DOUBLE:
 			break;
 		case DB1_STRING:
-			if(_t0==DB1_STR)
+			if(_t0==DB1_STR || _t0==DB1_BLOB)
 				return 0;
 		case DB1_STR:
 			if(_t0==DB1_STRING || _t0==DB1_BLOB)
 				return 0;
 		case DB1_BLOB:
-			if(_t0==DB1_STR)
+			if(_t0==DB1_STR || _t0==DB1_STRING)
 				return 0;
 		case DB1_BITMAP:
 			if (_t0==DB1_INT)
 				return 0;
+		default:
+			LM_ERR("invalid datatype %d\n", _t1);
+			return 1;
 	}
 	return 1;
 }
 
+static int tmp_table_number = 0;
+
+dbt_table_p dbt_db_get_temp_table(dbt_cache_p _dc)
+{
+	dbt_table_p _tbc = NULL;
+	str _s;
+	char buf[30];
+	int hash;
+	int hashidx;
+
+
+	if(!_dbt_cachetbl || !_dc) {
+		LM_ERR("invalid parameter\n");
+		return NULL;
+	}
+
+	sprintf(buf, "tmp-%i-%i", my_pid(), ++tmp_table_number);
+	_s.s = buf;
+	_s.len = strlen(buf);
+
+	hash = core_hash(&_dc->name, &_s, DBT_CACHETBL_SIZE);
+	hashidx = hash % DBT_CACHETBL_SIZE;
+
+	lock_get(&_dbt_cachetbl[hashidx].sem);
+
+	_tbc = _dbt_cachetbl[hashidx].dtp;
+
+
+
+	_tbc = dbt_table_new(&_s, &(_dc->name), NULL);
+
+	_tbc->hash = hash;
+	_tbc->next = _dbt_cachetbl[hashidx].dtp;
+	if(_dbt_cachetbl[hashidx].dtp)
+		_dbt_cachetbl[hashidx].dtp->prev = _tbc;
+
+	_dbt_cachetbl[hashidx].dtp = _tbc;
+
+	dbt_table_update_flags(_tbc, DBT_TBFL_TEMP, DBT_FL_SET, 0);
+
+
+	lock_release(&_dbt_cachetbl[hashidx].sem);
+	return _tbc;
+}

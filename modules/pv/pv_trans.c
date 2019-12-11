@@ -1,6 +1,4 @@
 /*
- * $Id$
- *
  * Copyright (C) 2007 voice-system.ro
  * Copyright (C) 2009 asipto.com
  *
@@ -16,9 +14,9 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License 
- * along with this program; if not, write to the Free Software 
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
 
@@ -35,8 +33,8 @@
 
 #include "../../dprint.h"
 #include "../../mem/mem.h"
-#include "../../ut.h" 
-#include "../../trim.h" 
+#include "../../ut.h"
+#include "../../trim.h"
 #include "../../pvapi.h"
 #include "../../dset.h"
 #include "../../basex.h"
@@ -47,11 +45,12 @@
 #include "../../parser/parse_nameaddr.h"
 
 #include "../../lib/kcore/strcommon.h"
+#include "../../lib/srutils/shautils.h"
 #include "pv_trans.h"
 
 
-static char _empty_str[] = "";
-static str _tr_empty = { _empty_str, 0 };
+static char _tr_empty_buf[2] = {0};
+static str _tr_empty = { _tr_empty_buf, 0 };
 static str _tr_uri = {0, 0};
 static struct sip_uri _tr_parsed_uri;
 static param_t* _tr_uri_params = NULL;
@@ -126,12 +125,12 @@ static int urlencode_param(str *sin, str *sout)
 {
 	char *at, *p;
 
-	at = sout->s;
-	p  = sin->s;
-
 	if (sin==NULL || sout==NULL || sin->s==NULL || sout->s==NULL ||
 			sin->len<0 || sout->len < 3*sin->len+1)
 		return -1;
+
+	at = sout->s;
+	p  = sin->s;
 
 	while (p < sin->s+sin->len) {
 		if (isalnum(*p) || *p == '-' || *p == '_' || *p == '.' || *p == '~')
@@ -178,6 +177,75 @@ static int urldecode_param(str *sin, str *sout) {
 	return 0;
 }
 
+/* Encode 7BIT PDU */
+static int pdu_7bit_encode(str sin) {
+	int i, j;
+	unsigned char hex;
+	unsigned char nleft;
+	unsigned char fill;
+	char HexTbl[] = {"0123456789ABCDEF"};
+
+	nleft = 1;
+	j = 0;
+	for(i = 0; i < sin.len; i++) {
+		hex = *(sin.s) >> (nleft - 1);
+		fill = *(sin.s+1) << (8-nleft);
+		hex = hex | fill;
+		_tr_buffer[j++] = HexTbl[hex >> 4];
+		_tr_buffer[j++] = HexTbl[hex & 0x0F];
+		nleft++;
+		if(nleft == 8) {
+			sin.s++;
+			i++;
+			nleft = 1;
+		}
+		sin.s++;
+	}
+	_tr_buffer[j] = '\0';
+	return j;
+}
+
+/* Decode 7BIT PDU */
+static int pdu_7bit_decode(str sin) {
+	int i, j;
+	unsigned char nleft = 1;
+	unsigned char fill = 0;
+	unsigned char oldfill = 0;
+	j = 0;
+	for(i = 0; i < sin.len; i += 2) {
+		_tr_buffer[j] = (unsigned char)pv_from_hex(sin.s[i]) << 4;
+		_tr_buffer[j] |= (unsigned char)pv_from_hex(sin.s[i+1]);
+		fill = (unsigned char)_tr_buffer[j];
+		fill >>= (8 - nleft);
+		_tr_buffer[j] <<= (nleft -1 );
+		_tr_buffer[j] &= 0x7F;
+		_tr_buffer[j] |= oldfill;
+		oldfill = fill;
+		j++;
+		nleft++;
+		if(nleft == 8) {
+			_tr_buffer[j++] = oldfill;
+			nleft = 1;
+			oldfill = 0;
+		}
+	}
+	_tr_buffer[j] = '\0';
+	return j;
+}
+
+/* Get only the numeric part of string, e.g.
+ * 040/123-456 => 040123456 */
+static int getNumericValue(str sin) {
+	int i, j = 0;
+	for(i = 0; i < sin.len; i ++) {
+		if (sin.s[i] >= '0' && sin.s[i] <= '9') {
+			_tr_buffer[j++] = sin.s[i];
+		}
+	}
+	_tr_buffer[j] = '\0';
+	return j;
+}
+
 /* -- transformations functions */
 
 /*!
@@ -217,7 +285,7 @@ int tr_eval_string(struct sip_msg *msg, tr_param_t *tp, int subtype,
 			{
 				if(str2sint(&val->rs, &val->ri)!=0)
 					return -1;
-			} else { 
+			} else {
 				if(!(val->flags&PV_VAL_STR))
 					val->rs.s = int2str(val->ri, &val->rs.len);
 			}
@@ -234,6 +302,36 @@ int tr_eval_string(struct sip_msg *msg, tr_param_t *tp, int subtype,
 			val->ri = 0;
 			val->rs.s = _tr_buffer;
 			val->rs.len = MD5_LEN;
+			break;
+		case TR_S_SHA256:
+			if(!(val->flags&PV_VAL_STR))
+				val->rs.s = int2str(val->ri, &val->rs.len);
+			compute_sha256(_tr_buffer, (u_int8_t*)val->rs.s, val->rs.len);
+			_tr_buffer[SHA256_DIGEST_STRING_LENGTH -1] = '\0';
+			val->flags = PV_VAL_STR;
+			val->ri = 0;
+			val->rs.s = _tr_buffer;
+			val->rs.len = SHA256_DIGEST_STRING_LENGTH -1 ;
+			break;
+		case TR_S_SHA384:
+			if(!(val->flags&PV_VAL_STR))
+				val->rs.s = int2str(val->ri, &val->rs.len);
+			compute_sha384(_tr_buffer, (u_int8_t*)val->rs.s, val->rs.len);
+			_tr_buffer[SHA384_DIGEST_STRING_LENGTH -1] = '\0';
+			val->flags = PV_VAL_STR;
+			val->ri = 0;
+			val->rs.s = _tr_buffer;
+			val->rs.len = SHA384_DIGEST_STRING_LENGTH -1;
+			break;
+		case TR_S_SHA512:
+			if(!(val->flags&PV_VAL_STR))
+				val->rs.s = int2str(val->ri, &val->rs.len);
+			compute_sha512(_tr_buffer, (u_int8_t*)val->rs.s, val->rs.len);
+			_tr_buffer[SHA512_DIGEST_STRING_LENGTH -1] = '\0';
+			val->flags = PV_VAL_STR;
+			val->ri = 0;
+			val->rs.s = _tr_buffer;
+			val->rs.len = SHA512_DIGEST_STRING_LENGTH -1;
 			break;
 		case TR_S_ENCODEHEXA:
 			if(!(val->flags&PV_VAL_STR))
@@ -276,6 +374,39 @@ int tr_eval_string(struct sip_msg *msg, tr_param_t *tp, int subtype,
 				else return -1;
 			}
 			_tr_buffer[i] = '\0';
+			memset(val, 0, sizeof(pv_value_t));
+			val->flags = PV_VAL_STR;
+			val->rs.s = _tr_buffer;
+			val->rs.len = i;
+			break;
+		case TR_S_ENCODE7BIT:
+			if(!(val->flags&PV_VAL_STR))
+				val->rs.s = int2str(val->ri, &val->rs.len);
+			if(val->rs.len > (TR_BUFFER_SIZE*7/8) -1)
+				return -1;
+			i = pdu_7bit_encode(val->rs);
+			memset(val, 0, sizeof(pv_value_t));
+			val->flags = PV_VAL_STR;
+			val->rs.s = _tr_buffer;
+			val->rs.len = i;
+			break;
+		case TR_S_DECODE7BIT:
+			if(!(val->flags&PV_VAL_STR))
+				val->rs.s = int2str(val->ri, &val->rs.len);
+			if(val->rs.len>TR_BUFFER_SIZE/2-1)
+				return -1;
+			i = pdu_7bit_decode(val->rs);
+			memset(val, 0, sizeof(pv_value_t));
+			val->flags = PV_VAL_STR;
+			val->rs.s = _tr_buffer;
+			val->rs.len = i;
+			break;
+		case TR_S_NUMERIC:
+			if(!(val->flags&PV_VAL_STR))
+				return -1;
+			if(val->rs.len>TR_BUFFER_SIZE)
+				return -1;
+			i = getNumericValue(val->rs);
 			memset(val, 0, sizeof(pv_value_t));
 			val->flags = PV_VAL_STR;
 			val->rs.s = _tr_buffer;
@@ -545,7 +676,7 @@ int tr_eval_string(struct sip_msg *msg, tr_param_t *tp, int subtype,
 			st.len = val->rs.len;
 			for (i=0; i<st.len; i++)
 				st.s[i]=(val->rs.s[i]>='A' && val->rs.s[i]<='Z')
-							?('a' + val->rs.s[i] -'A'):val->rs.s[i];
+					?('a' + val->rs.s[i] -'A'):val->rs.s[i];
 			memset(val, 0, sizeof(pv_value_t));
 			val->flags = PV_VAL_STR;
 			val->rs = st;
@@ -564,7 +695,7 @@ int tr_eval_string(struct sip_msg *msg, tr_param_t *tp, int subtype,
 			st.len = val->rs.len;
 			for (i=0; i<st.len; i++)
 				st.s[i]=(val->rs.s[i]>='a' && val->rs.s[i]<='z')
-							?('A' + val->rs.s[i] -'a'):val->rs.s[i];
+					?('A' + val->rs.s[i] -'a'):val->rs.s[i];
 			memset(val, 0, sizeof(pv_value_t));
 			val->flags = PV_VAL_STR;
 			val->rs = st;
@@ -729,7 +860,7 @@ int tr_eval_string(struct sip_msg *msg, tr_param_t *tp, int subtype,
 				}
 				st2 = w.rs;
 			}
-			
+
 			val->flags = PV_VAL_STR;
 			val->ri = 0;
 
@@ -784,7 +915,7 @@ int tr_eval_string(struct sip_msg *msg, tr_param_t *tp, int subtype,
 			s[st.len] = '\0';
 			t = val->ri;
 			val->rs.len = strftime(_tr_buffer, TR_BUFFER_SIZE-1, s,
-			                localtime(&t));
+					localtime(&t));
 			pkg_free(s);
 			val->flags = PV_VAL_STR;
 			val->rs.s = _tr_buffer;
@@ -849,16 +980,16 @@ int tr_eval_string(struct sip_msg *msg, tr_param_t *tp, int subtype,
 							switch(st.s[i+1]) {
 								case 'n':
 									p[j++] = '\n';
-								break;
+									break;
 								case 'r':
 									p[j++] = '\r';
-								break;
+									break;
 								case 't':
 									p[j++] = '\t';
-								break;
+									break;
 								case '\\':
 									p[j++] = '\\';
-								break;
+									break;
 								default:
 									p[j++] = st.s[i+1];
 							}
@@ -1072,7 +1203,7 @@ int tr_eval_uri(struct sip_msg *msg, tr_param_t *tp, int subtype,
 			break;
 		case TR_URI_HEADERS:
 			val->rs = (_tr_parsed_uri.headers.s)?_tr_parsed_uri.headers:
-						_tr_empty;
+				_tr_empty;
 			break;
 		case TR_URI_TRANSPORT:
 			val->rs = (_tr_parsed_uri.transport_val.s)?
@@ -1128,6 +1259,7 @@ int tr_eval_paramlist(struct sip_msg *msg, tr_param_t *tp, int subtype,
 		pv_value_t *val)
 {
 	pv_value_t v;
+	pv_value_t vs;
 	str sv;
 	int n, i;
 	char separator = ';';
@@ -1141,17 +1273,23 @@ int tr_eval_paramlist(struct sip_msg *msg, tr_param_t *tp, int subtype,
 	{
 		if (subtype == TR_PL_COUNT)
 		{
-			if(tp->type != TR_PARAM_STRING || tp->v.s.len != 1)
-				return -1;
-
+			if(tp->type != TR_PARAM_STRING) {
+				if(pv_get_spec_value(msg, (pv_spec_t*)tp->v.data, &vs)!=0
+						|| (!(vs.flags&PV_VAL_STR)) || vs.rs.len<=0)
+				{
+					LM_ERR("value cannot get p1\n");
+					return -1;
+				}
+				separator = vs.rs.s[0];
+			} else {
+				if(tp->v.s.len != 1)
+					return -1;
 				separator = tp->v.s.s[0];
-		}
-		else if (tp->next != NULL)
-		{
+			}
+		} else if (tp->next != NULL) {
 			if(tp->next->type != TR_PARAM_STRING
 					|| tp->next->v.s.len != 1)
 				return -1;
-
 			separator = tp->next->v.s.s[0];
 		}
 	}
@@ -1181,21 +1319,21 @@ int tr_eval_paramlist(struct sip_msg *msg, tr_param_t *tp, int subtype,
 		_tr_params_str.len = val->rs.len;
 		memcpy(_tr_params_str.s, val->rs.s, val->rs.len);
 		_tr_params_str.s[_tr_params_str.len] = '\0';
-		
+
 		/* reset old values */
 		if(_tr_params_list != NULL)
 		{
 			free_params(_tr_params_list);
 			_tr_params_list = 0;
 		}
-		
+
 		/* parse params */
 		sv = _tr_params_str;
 		if (parse_params2(&sv, CLASS_ANY, &phooks, &_tr_params_list,
 					_tr_params_separator)<0)
 			return -1;
 	}
-	
+
 	if(_tr_params_list==NULL)
 		return -1;
 
@@ -1223,7 +1361,7 @@ int tr_eval_paramlist(struct sip_msg *msg, tr_param_t *tp, int subtype,
 				}
 				sv = v.rs;
 			}
-			
+
 			for (pit = _tr_params_list; pit; pit=pit->next)
 			{
 				if (pit->name.len==sv.len
@@ -1269,7 +1407,7 @@ int tr_eval_paramlist(struct sip_msg *msg, tr_param_t *tp, int subtype,
 					n--;
 				}
 			} else {
-				/* ugly hack -- params are in reverse order 
+				/* ugly hack -- params are in reverse order
 				 * - first count then find */
 				i = 0;
 				for (pit = _tr_params_list; pit; pit=pit->next)
@@ -1324,7 +1462,7 @@ int tr_eval_paramlist(struct sip_msg *msg, tr_param_t *tp, int subtype,
 					n--;
 				}
 			} else {
-				/* ugly hack -- params are in reverse order 
+				/* ugly hack -- params are in reverse order
 				 * - first count then find */
 				i = 0;
 				for (pit = _tr_params_list; pit; pit=pit->next)
@@ -1404,10 +1542,10 @@ int tr_eval_nameaddr(struct sip_msg *msg, tr_param_t *tp, int subtype,
 		_tr_nameaddr_str.len = val->rs.len;
 		memcpy(_tr_nameaddr_str.s, val->rs.s, val->rs.len);
 		_tr_nameaddr_str.s[_tr_nameaddr_str.len] = '\0';
-		
+
 		/* reset old values */
 		memset(&_tr_nameaddr, 0, sizeof(name_addr_t));
-		
+
 		/* parse params */
 		sv = _tr_nameaddr_str;
 		ret = parse_nameaddr(&sv, &_tr_nameaddr);
@@ -1419,7 +1557,7 @@ int tr_eval_nameaddr(struct sip_msg *msg, tr_param_t *tp, int subtype,
 			_tr_nameaddr.len = _tr_nameaddr_str.len;
 		}
 	}
-	
+
 	memset(val, 0, sizeof(pv_value_t));
 	val->flags = PV_VAL_STR;
 
@@ -1487,11 +1625,11 @@ int tr_eval_tobody(struct sip_msg *msg, tr_param_t *tp, int subtype,
 		_tr_tobody_str.s[_tr_tobody_str.len] = '\r';
 		_tr_tobody_str.s[_tr_tobody_str.len+1] = '\n';
 		_tr_tobody_str.s[_tr_tobody_str.len+2] = '\0';
-		
+
 		/* reset old values */
 		free_to_params(&_tr_tobody);
 		memset(&_tr_tobody, 0, sizeof(struct to_body));
-		
+
 		/* parse params */
 		sv = _tr_tobody_str;
 		parse_to(sv.s, sv.s + sv.len + 2, &_tr_tobody);
@@ -1504,7 +1642,7 @@ int tr_eval_tobody(struct sip_msg *msg, tr_param_t *tp, int subtype,
 			return -1;
 		}
 		if (parse_uri(_tr_tobody.uri.s, _tr_tobody.uri.len,
-				&_tr_tobody.parsed_uri)<0)
+					&_tr_tobody.parsed_uri)<0)
 		{
 			free_to_params(&_tr_tobody);
 			memset(&_tr_tobody, 0, sizeof(struct to_body));
@@ -1513,7 +1651,7 @@ int tr_eval_tobody(struct sip_msg *msg, tr_param_t *tp, int subtype,
 			return -1;
 		}
 	}
-	
+
 	memset(val, 0, sizeof(pv_value_t));
 	val->flags = PV_VAL_STR;
 
@@ -1530,18 +1668,18 @@ int tr_eval_tobody(struct sip_msg *msg, tr_param_t *tp, int subtype,
 			break;
 		case TR_TOBODY_URI_USER:
 			val->rs = (_tr_tobody.parsed_uri.user.s)
-							?_tr_tobody.parsed_uri.user:_tr_empty;
+				?_tr_tobody.parsed_uri.user:_tr_empty;
 			break;
 		case TR_TOBODY_URI_HOST:
 			val->rs = (_tr_tobody.parsed_uri.host.s)
-							?_tr_tobody.parsed_uri.host:_tr_empty;
+				?_tr_tobody.parsed_uri.host:_tr_empty;
 			break;
 		case TR_TOBODY_PARAMS:
 			if(_tr_tobody.param_lst!=NULL)
 			{
 				val->rs.s = _tr_tobody.param_lst->name.s;
 				val->rs.len = _tr_tobody_str.s + _tr_tobody_str.len
-								- val->rs.s;
+					- val->rs.s;
 			} else val->rs = _tr_empty;
 			break;
 
@@ -1625,7 +1763,7 @@ int tr_eval_line(struct sip_msg *msg, tr_param_t *tp, int subtype,
 					if(p==NULL)
 					{
 						/* last line */
-						mv.len = (val->rs.s + val->rs.len) - p;
+						mv.len = (val->rs.s + val->rs.len) - mv.s;
 					} else {
 						mv.len = p - mv.s;
 					}
@@ -1707,7 +1845,7 @@ int tr_eval_line(struct sip_msg *msg, tr_param_t *tp, int subtype,
 					if(p==NULL)
 					{
 						/* last line */
-						mv.len = (val->rs.s + val->rs.len) - p;
+						mv.len = (val->rs.s + val->rs.len) - mv.s;
 					} else {
 						mv.len = p - mv.s;
 					}
@@ -1764,7 +1902,7 @@ done:
 		if(_p0==NULL) \
 		{ \
 			LM_ERR("invalid spec in substr transformation: %.*s!\n", \
-				_in->len, _in->s); \
+					_in->len, _in->s); \
 			goto error; \
 		} \
 		_p = _p0; \
@@ -1787,7 +1925,7 @@ done:
 			} else if(*_p=='+') _p++; \
 			_n = 0; \
 			while(is_in_str(_p, _in) && (*_p==' ' || *_p=='\t' || *_p=='\n')) \
-					_p++; \
+			_p++; \
 			while(is_in_str(_p, _in) && *_p>='0' && *_p<='9') \
 			{ \
 				_n = _n*10 + *_p - '0'; \
@@ -1804,7 +1942,7 @@ done:
 			_tp->v.n = sign*n; \
 		} else { \
 			LM_ERR("tinvalid param in transformation: %.*s!!\n", \
-				_in->len, _in->s); \
+					_in->len, _in->s); \
 			goto error; \
 		} \
 	}
@@ -1824,7 +1962,7 @@ done:
 		if(_p0==NULL) \
 		{ \
 			LM_ERR("invalid spec in substr transformation: %.*s!\n", \
-				_in->len, _in->s); \
+					_in->len, _in->s); \
 			goto error; \
 		} \
 		_p = _p0; \
@@ -1841,11 +1979,11 @@ done:
 		_ps = _p; \
 		while(is_in_str(_p, _in) && *_p!='\t' && *_p!='\n' \
 				&& *_p!=TR_PARAM_MARKER && *_p!=TR_RBRACKET) \
-				_p++; \
+		_p++; \
 		if(*_p=='\0') \
 		{ \
 			LM_ERR("invalid param in transformation: %.*s!!\n", \
-				_in->len, _in->s); \
+					_in->len, _in->s); \
 			goto error; \
 		} \
 		_tp = (tr_param_t*)pkg_malloc(sizeof(tr_param_t)); \
@@ -1908,17 +2046,35 @@ char* tr_parse_string(str* in, trans_t *t)
 	} else if(name.len==3 && strncasecmp(name.s, "md5", 3)==0) {
 		t->subtype = TR_S_MD5;
 		goto done;
+	} else if(name.len==6 && strncasecmp(name.s, "sha256", 6)==0) {
+		t->subtype = TR_S_SHA256;
+		goto done;
+	} else if(name.len==6 && strncasecmp(name.s, "sha384", 6)==0) {
+		t->subtype = TR_S_SHA384;
+		goto done;
+	} else if(name.len==6 && strncasecmp(name.s, "sha512", 6)==0) {
+		t->subtype = TR_S_SHA512;
+		goto done;
 	} else if(name.len==7 && strncasecmp(name.s, "tolower", 7)==0) {
 		t->subtype = TR_S_TOLOWER;
 		goto done;
 	} else if(name.len==7 && strncasecmp(name.s, "toupper", 7)==0) {
 		t->subtype = TR_S_TOUPPER;
 		goto done;
+	} else if(name.len==7 && strncasecmp(name.s, "numeric", 7)==0) {
+		t->subtype = TR_S_NUMERIC;
+		goto done;
 	} else if(name.len==11 && strncasecmp(name.s, "encode.hexa", 11)==0) {
 		t->subtype = TR_S_ENCODEHEXA;
 		goto done;
 	} else if(name.len==11 && strncasecmp(name.s, "decode.hexa", 11)==0) {
 		t->subtype = TR_S_DECODEHEXA;
+		goto done;
+	} else if(name.len==11 && strncasecmp(name.s, "encode.7bit", 11)==0) {
+		t->subtype = TR_S_ENCODE7BIT;
+		goto done;
+	} else if(name.len==11 && strncasecmp(name.s, "decode.7bit", 11)==0) {
+		t->subtype = TR_S_DECODE7BIT;
 		goto done;
 	} else if(name.len==13 && strncasecmp(name.s, "encode.base64", 13)==0) {
 		t->subtype = TR_S_ENCODEBASE64;
@@ -1956,7 +2112,7 @@ char* tr_parse_string(str* in, trans_t *t)
 		if(*p!=TR_RBRACKET)
 		{
 			LM_ERR("invalid prefixes transformation: %.*s!!\n",
-				in->len, in->s);
+					in->len, in->s);
 			goto error;
 		}
 		goto done;
@@ -1972,7 +2128,7 @@ char* tr_parse_string(str* in, trans_t *t)
 		if(*p!=TR_RBRACKET)
 		{
 			LM_ERR("invalid prefixes transformation: %.*s!!\n",
-				in->len, in->s);
+					in->len, in->s);
 			goto error;
 		}
 		goto done;
@@ -1991,7 +2147,7 @@ char* tr_parse_string(str* in, trans_t *t)
 		if(*p!=TR_PARAM_MARKER)
 		{
 			LM_ERR("invalid substr transformation: %.*s!\n",
-				in->len, in->s);
+					in->len, in->s);
 			goto error;
 		}
 		p++;
@@ -2007,7 +2163,7 @@ char* tr_parse_string(str* in, trans_t *t)
 		if(*p!=TR_RBRACKET)
 		{
 			LM_ERR("invalid substr transformation: %.*s!!\n",
-				in->len, in->s);
+					in->len, in->s);
 			goto error;
 		}
 		goto done;
@@ -2047,7 +2203,7 @@ char* tr_parse_string(str* in, trans_t *t)
 		if(*p!=TR_RBRACKET)
 		{
 			LM_ERR("invalid select transformation: %.*s!!\n",
-				in->len, in->s);
+					in->len, in->s);
 			goto error;
 		}
 		goto done;
@@ -2067,7 +2223,7 @@ char* tr_parse_string(str* in, trans_t *t)
 		if(*p!=TR_RBRACKET)
 		{
 			LM_ERR("invalid strip transformation: %.*s!!\n",
-				in->len, in->s);
+					in->len, in->s);
 			goto error;
 		}
 		goto done;
@@ -2087,7 +2243,7 @@ char* tr_parse_string(str* in, trans_t *t)
 		if(*p!=TR_RBRACKET)
 		{
 			LM_ERR("invalid striptail transformation: %.*s!!\n",
-				in->len, in->s);
+					in->len, in->s);
 			goto error;
 		}
 		goto done;
@@ -2107,7 +2263,7 @@ char* tr_parse_string(str* in, trans_t *t)
 		if(*p!=TR_RBRACKET)
 		{
 			LM_ERR("invalid strip transformation: %.*s!!\n",
-				in->len, in->s);
+					in->len, in->s);
 			goto error;
 		}
 		goto done;
@@ -2127,7 +2283,7 @@ char* tr_parse_string(str* in, trans_t *t)
 		if(*p!=TR_RBRACKET)
 		{
 			LM_ERR("invalid ftime transformation: %.*s!!\n",
-				in->len, in->s);
+					in->len, in->s);
 			goto error;
 		}
 		goto done;
@@ -2146,7 +2302,7 @@ char* tr_parse_string(str* in, trans_t *t)
 		if(*p!=TR_PARAM_MARKER)
 		{
 			LM_ERR("invalid replace transformation: %.*s!\n",
-				in->len, in->s);
+					in->len, in->s);
 			goto error;
 		}
 		p++;
@@ -2157,7 +2313,7 @@ char* tr_parse_string(str* in, trans_t *t)
 		if(*p!=TR_RBRACKET)
 		{
 			LM_ERR("invalid replace transformation: %.*s!!\n",
-				in->len, in->s);
+					in->len, in->s);
 			goto error;
 		}
 		goto done;
@@ -2186,7 +2342,7 @@ char* tr_parse_string(str* in, trans_t *t)
 		if(*p!=TR_RBRACKET)
 		{
 			LM_ERR("invalid ftime transformation: %.*s!!\n",
-				in->len, in->s);
+					in->len, in->s);
 			goto error;
 		}
 		goto done;
@@ -2383,7 +2539,7 @@ char* tr_parse_paramlist(str* in, trans_t *t)
 			if (p - start_pos != 1)
 			{
 				LM_ERR("invalid separator in transformation: "
-					"%.*s\n", in->len, in->s);
+						"%.*s\n", in->len, in->s);
 				goto error;
 			}
 			while(*p && (*p==' ' || *p=='\t' || *p=='\n')) p++;
@@ -2406,7 +2562,7 @@ char* tr_parse_paramlist(str* in, trans_t *t)
 		}
 		p++;
 		_tr_parse_nparam(p, p0, tp, spec, n, sign, in, s)
-		t->params = tp;
+			t->params = tp;
 		tp = 0;
 		while(is_in_str(p, in) && (*p==' ' || *p=='\t' || *p=='\n')) p++;
 
@@ -2419,7 +2575,7 @@ char* tr_parse_paramlist(str* in, trans_t *t)
 			if (p - start_pos != 1)
 			{
 				LM_ERR("invalid separator in transformation: "
-					"%.*s\n", in->len, in->s);
+						"%.*s\n", in->len, in->s);
 				goto error;
 			}
 			while(*p && (*p==' ' || *p=='\t' || *p=='\n')) p++;
@@ -2442,7 +2598,7 @@ char* tr_parse_paramlist(str* in, trans_t *t)
 		}
 		p++;
 		_tr_parse_nparam(p, p0, tp, spec, n, sign, in, s)
-		t->params = tp;
+			t->params = tp;
 		tp = 0;
 		while(is_in_str(p, in) && (*p==' ' || *p=='\t' || *p=='\n')) p++;
 
@@ -2455,7 +2611,7 @@ char* tr_parse_paramlist(str* in, trans_t *t)
 			if (p - start_pos != 1)
 			{
 				LM_ERR("invalid separator in transformation: "
-					"%.*s\n", in->len, in->s);
+						"%.*s\n", in->len, in->s);
 				goto error;
 			}
 			while(*p && (*p==' ' || *p=='\t' || *p=='\n')) p++;
@@ -2475,19 +2631,19 @@ char* tr_parse_paramlist(str* in, trans_t *t)
 			start_pos = ++p;
 			_tr_parse_sparam(p, p0, tp, spec, ps, in, s);
 			t->params = tp;
-			tp = 0;
-			if (p - start_pos != 1)
+			if (tp->type != TR_PARAM_SPEC && p - start_pos != 1)
 			{
 				LM_ERR("invalid separator in transformation: "
-					"%.*s\n", in->len, in->s);
+						"%.*s\n", in->len, in->s);
 				goto error;
 			}
+			tp = 0;
 
 			while(*p && (*p==' ' || *p=='\t' || *p=='\n')) p++;
 			if(*p!=TR_RBRACKET)
 			{
 				LM_ERR("invalid name transformation: %.*s!\n",
-					in->len, in->s);
+						in->len, in->s);
 				goto error;
 			}
 		}
@@ -2672,7 +2828,7 @@ char* tr_parse_line(str* in, trans_t *t)
 		}
 		p++;
 		_tr_parse_nparam(p, p0, tp, spec, n, sign, in, s)
-		t->params = tp;
+			t->params = tp;
 		tp = 0;
 		while(is_in_str(p, in) && (*p==' ' || *p=='\t' || *p=='\n')) p++;
 		if(*p!=TR_RBRACKET)

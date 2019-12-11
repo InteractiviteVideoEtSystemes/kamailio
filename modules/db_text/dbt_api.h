@@ -1,6 +1,4 @@
 /*
- * $Id$
- *
  * DBText library
  *
  * Copyright (C) 2001-2003 FhG Fokus
@@ -19,11 +17,7 @@
  *
  * You should have received a copy of the GNU General Public License 
  * along with this program; if not, write to the Free Software 
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- * 
- * History:
- * --------
- * 2003-02-05  created by Daniel
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  * 
  */
 
@@ -36,10 +30,15 @@
 #include "../../lib/srdb1/db_con.h"
 #include "../../lib/srdb1/db_row.h"
 
+#include "dbt_res.h"
 /*
  * Retrieve result set
  */
-int dbt_get_result(db1_con_t* _h, db1_res_t** _r);
+//int dbt_get_result(db1_res_t** _r, dbt_result_p _dres);
+int dbt_get_result(db1_res_t** _r, dbt_table_p _dres);
+int dbt_init_result(db1_res_t** _r, dbt_table_p _dres);
+int dbt_get_next_result(db1_res_t** _r, int offset, int rows);
+
 
 int dbt_use_table(db1_con_t* _h, const str* _t);
 

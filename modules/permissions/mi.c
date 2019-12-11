@@ -18,7 +18,7 @@
  *
  * You should have received a copy of the GNU General Public License 
  * along with this program; if not, write to the Free Software 
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  * History:
  * --------
@@ -54,16 +54,12 @@ struct mi_root* mi_trusted_reload(struct mi_root *cmd_tree, void *param)
  * RPC function to reload trusted table
  */
 void rpc_trusted_reload(rpc_t* rpc, void* c) {
-	if (hash_table==NULL) {
-		rpc->fault(c, 500, "Reload failed. No hash table");
-		return;
-	}
-	if (reload_trusted_table () != 1) {
+	if (reload_trusted_table_cmd () != 1) {
 		rpc->fault(c, 500, "Reload failed.");
 		return;
 	}
 
-	rpc->printf(c, "Reload OK");
+	rpc->rpl_printf(c, "Reload OK");
 	return;
 }
 
@@ -96,7 +92,7 @@ struct mi_root* mi_trusted_dump(struct mi_root *cmd_tree, void *param)
 void rpc_trusted_dump(rpc_t* rpc, void* c) {
 
 	if (hash_table==NULL) {
-		rpc->fault(c, 500, "Reload failed. No trusted table");
+		rpc->fault(c, 500, "No trusted table");
 		return;
 	}
 
@@ -130,7 +126,7 @@ void rpc_address_reload(rpc_t* rpc, void* c) {
 		return;
 	}
 
-	rpc->printf(c, "Reload OK");
+	rpc->rpl_printf(c, "Reload OK");
 	return;
 }
 
@@ -158,6 +154,10 @@ struct mi_root* mi_address_dump(struct mi_root *cmd_tree, void *param)
  */
 void rpc_address_dump(rpc_t* rpc, void* c) {
 
+	if(addr_hash_table==NULL) {
+		rpc->fault(c, 500, "No address table");
+		return;
+	}
 	if(addr_hash_table_rpc_print(*addr_hash_table, rpc, c) < 0 ) {
 		LM_DBG("failed to print a subnet_table dump\n");
 	}
@@ -189,6 +189,10 @@ struct mi_root* mi_subnet_dump(struct mi_root *cmd_tree, void *param)
  * RPC function to dump subnet table
  */
 void rpc_subnet_dump(rpc_t* rpc, void* c) {
+	if(subnet_table==NULL) {
+		rpc->fault(c, 500, "No subnet table");
+		return;
+	}
 	if(subnet_table_rpc_print(*subnet_table, rpc, c) < 0) {
 		LM_DBG("failed to print a subnet_table dump\n");
 	}
@@ -221,6 +225,10 @@ struct mi_root* mi_domain_name_dump(struct mi_root *cmd_tree, void *param)
  */
 void rpc_domain_name_dump(rpc_t* rpc, void* c) {
 
+	if(domain_list_table==NULL) {
+		rpc->fault(c, 500, "No domain list table");
+		return;
+	}
 	if ( domain_name_table_rpc_print(*domain_list_table, rpc, c) < 0 ) {
 		LM_DBG("failed to print a subnet_table dump\n");
 	}
@@ -325,9 +333,9 @@ void rpc_test_uri(rpc_t* rpc, void* c)
     	uri[urip.len] = 0;
 
 	if (allow_test(basename, uri, contact) == 1) {
-		rpc->printf(c, "Allowed");
+		rpc->rpl_printf(c, "Allowed");
 		return;
 	}
-	rpc->printf(c, "Denied");
+	rpc->rpl_printf(c, "Denied");
 	return;
 }

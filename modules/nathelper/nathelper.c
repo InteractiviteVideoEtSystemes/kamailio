@@ -359,7 +359,8 @@ static unsigned int raw_ip = 0;
 static unsigned short raw_port = 0;
 static int nh_keepalive_timeout = 0;
 static request_method_t sipping_method_id = 0;
-
+/* filter contacts by server_id */
+static int nh_filter_srvid = 0;
 
 /*0-> disabled, 1 ->enabled*/
 unsigned int *natping_state=0;
@@ -429,7 +430,7 @@ static param_export_t params[] = {
 	{"natping_socket",        STR_PARAM, &natping_socket        },
 	{"keepalive_timeout",     INT_PARAM, &nh_keepalive_timeout  },
 	{"udpping_from_path",     INT_PARAM, &udpping_from_path     },
-
+        {"filter_server_id",      INT_PARAM, &nh_filter_srvid },
 	{0, 0, 0}
 };
 
@@ -2078,6 +2079,7 @@ nh_timer(unsigned int ticks, void *timer_idx)
 	char *path_ip_str = NULL;
 	unsigned int path_ip = 0;
 	unsigned short path_port = 0;
+        int options = 0;
 
 	if((*natping_state) == 0)
 		goto done;
@@ -2090,9 +2092,10 @@ nh_timer(unsigned int ticks, void *timer_idx)
 			goto done;
 		}
 	}
+        if(nh_filter_srvid) options |= GAU_OPT_SERVER_ID;
 	rval = ul.get_all_ucontacts(buf, cblen, (ping_nated_only?ul.nat_flag:0),
 		((unsigned int)(unsigned long)timer_idx)*natping_interval+iteration,
-		natping_processes*natping_interval);
+		natping_processes*natping_interval, options);
 	if (rval<0) {
 		LM_ERR("failed to fetch contacts\n");
 		goto done;
@@ -2108,7 +2111,7 @@ nh_timer(unsigned int ticks, void *timer_idx)
 		}
 		rval = ul.get_all_ucontacts(buf,cblen,(ping_nated_only?ul.nat_flag:0),
 		   ((unsigned int)(unsigned long)timer_idx)*natping_interval+iteration,
-		   natping_processes*natping_interval);
+		   natping_processes*natping_interval,options);
 		if (rval != 0) {
 			pkg_free(buf);
 			goto done;

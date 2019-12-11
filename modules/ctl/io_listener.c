@@ -1,32 +1,21 @@
 /*
- * $Id$
- *
  * Copyright (C) 2006 iptelorg GmbH
  *
- * This file is part of ser, a free SIP server.
+ * This file is part of Kamailio, a free SIP server.
  *
- * ser is free software; you can redistribute it and/or modify
+ * Kamailio is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version
  *
- * For a license to use the ser software under conditions
- * other than those described here, or to purchase support for this
- * software, please contact iptel.org by e-mail at the following addresses:
- *    info@iptel.org
- *
- * ser is distributed in the hope that it will be useful,
+ * Kamailio is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License 
  * along with this program; if not, write to the Free Software 
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- */
-/* History:
- * --------
- *  2006-02-15  created by andrei
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
 #include "../../globals.h"
@@ -192,7 +181,7 @@ void io_listen_loop(int fd_no, struct ctrl_socket* cs_lst)
 	int type;
 	
 	clist_init(&stream_conn_lst, next, prev);
-	type=UNKNOWN_SOCK;
+	type=F_T_RESERVED;
 #if 0
 	/* estimate used fd numbers -- FIXME: broken, make it a function in pt.h */
 	max_fd_no=get_max_procs()*3 -1 /* timer */ +3; /* stdin/out/err*/;
