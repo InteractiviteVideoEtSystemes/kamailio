@@ -1412,7 +1412,7 @@ error:
 			res = t_forward_nonack(t, p_msg, proxy, force_proto);
 			if (res <= 0) {
 				if (res != E_CFG) {
-					LOG(L_ERR, "ERROR: w_t_relay_to: t_relay_to failed\n");
+					LOG(L_ERR, "ERROR: w_t_relay_to: t_relay_to failed -> %d\n", res);
 					/* let us save the error code, we might need it later
 					 * when the failure_route has finished (Miklos) */
 				}
