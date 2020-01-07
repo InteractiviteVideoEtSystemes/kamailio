@@ -1717,7 +1717,7 @@ int t_forward_nonack( struct cell *t, struct sip_msg* p_msg ,
 			/* either failed to add branches, or there were no more branches
 			*/
 			ser_error=MIN_int(lowest_ret, E_CFG);
-			return -1;
+			return -2;
 		}
 		if(lowest_ret!=E_CFG)
 			LOG(L_ERR, "ERROR: t_forward_nonack: failure to add branches\n");
@@ -1756,7 +1756,8 @@ int t_forward_nonack( struct cell *t, struct sip_msg* p_msg ,
 		ser_error=E_SEND;
 		/* else return the last error (?) */
 		/* the caller should take care and delete the transaction */
-		return -1;
+		LOG(L_ERR, "ERROR: t_forward_nonack: failed on all branches\n");
+		return E_NO_SOCKET; 
 	}
 	ser_error=0; /* clear branch send errors, we have overall success */
 	set_kr(REQ_FWDED);
@@ -1771,7 +1772,7 @@ canceled:
 	/* update message flags, if changed in branch route */
 	t->uas.request->flags = p_msg->flags;
 	ser_error=E_CANCELED;
-	return -1;
+	return -4;
 }
 
 
