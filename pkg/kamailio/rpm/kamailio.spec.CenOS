@@ -825,12 +825,6 @@ fi
 %{_libdir}/kamailio/perl/Kamailio/VDB/Adapter/Speeddial.pm
 %{_libdir}/kamailio/perl/Kamailio/VDB/Adapter/TableVersions.pm
 
-%files lua
-%defattr(-,root,root)
-%doc %{_docdir}/kamailio/modules/README.app_lua
-%{_libdir}/kamailio/modules/app_lua.so
-
-
 %files geoip
 %defattr(-,root,root)
 %doc %{_docdir}/kamailio/modules/README.geoip
