@@ -9,7 +9,6 @@
 %define LDAP_MODULES            ldap
 %define XMLRPC_MODULES          xml
 %define PERL_MODULES            perl
-%define LUA_MODULES             lua
 %define UTILS_MODULES           utils
 %define PURPLE_MODULES          purple
 %define MEMCACHED_MODULES       memcached
@@ -36,7 +35,7 @@ Source2:      kamailio.default
 URL:          http://kamailio.org/
 Vendor:       kamailio.org
 BuildRoot:    %{_tmppath}/%{name}-%{ver}-buildroot
-Conflicts:    kamailio-mysql < %ver, kamailio-postgres < %ver, kamailio-unixodbc < %ver, kamailio-ldap < %ver, kamailio-xmlrpc < %ver, kamailio-perl < %ver, kamailio-lua < %ver, kamailio-utils < %ver, kamailio-purple < %ver, kamailio-memcached  < %ver, kamailio-tls  < %ver, kamailio-xmpp  < %ver, kamailio-cpl  < %ver, kamailio-snmpstats  < %ver, kamailio-carrierroute  < %ver, kamailio-presence  < %ver, kamailio-radius  < %ver, kamailio-geoip  < %ver,kamailio-json < %ver
+Conflicts:    kamailio-mysql < %ver, kamailio-postgres < %ver, kamailio-unixodbc < %ver, kamailio-ldap < %ver, kamailio-xmlrpc < %ver, kamailio-perl < %ver, kamailio-utils < %ver, kamailio-purple < %ver, kamailio-memcached  < %ver, kamailio-tls  < %ver, kamailio-xmpp  < %ver, kamailio-cpl  < %ver, kamailio-snmpstats  < %ver, kamailio-carrierroute  < %ver, kamailio-presence  < %ver, kamailio-radius  < %ver, kamailio-geoip  < %ver,kamailio-json < %ver
 BuildRequires:  make flex bison pcre-devel libunistring-devel
 
 %description
@@ -223,16 +222,6 @@ The kamailio-perl package provides an interface for Kamailio to write Perl exten
 the perlvdb database driver for Kamailio.
 
 
-%package  lua
-Summary:  Lua extensions for Kamailio.
-Group:    System Environment/Daemons
-Requires: kamailio = %ver
-BuildPrereq: lua-devel
-
-%description lua
-The kamailio-lua package provides an interface for Kamailio to write Python extensions
-
-
 %package  geoip
 Summary:  GeoIP extensions for Kamailio.
 Group:    System Environment/Daemons
@@ -283,7 +272,6 @@ make every-module group_include="k%LDAP_MODULES"
 #make every-module group_include="k%MEMCACHED_MODULES"
 #make every-module group_include="k%XMLRPC_MODULES"
 make every-module group_include="k%PERL_MODULES"
-make every-module group_include="k%LUA_MODULES"
 make every-module group_include="k%PYTHON_MODULES"
 make every-module group_include="k%GEOIP_MODULES"
 make every-module group_include="k%JSON_MODULES"
@@ -314,7 +302,6 @@ make install-modules-all group_include="k%LDAP_MODULES"
 #make install-modules-all group_include="k%MEMCACHED_MODULES"
 #make install-modules-all group_include="k%XMLRPC_MODULES"
 make install-modules-all group_include="k%PERL_MODULES"
-make install-modules-all group_include="k%LUA_MODULES"
 make install-modules-all group_include="k%PYTHON_MODULES"
 make install-modules-all group_include="k%GEOIP_MODULES"
 make install-modules-all group_include="k%JSON_MODULES"
