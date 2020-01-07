@@ -1,6 +1,4 @@
 /*
- * $Id$
- *
  * rls db - RLS database support 
  *
  * Copyright (C) 2011 Crocodile RCS Ltd
@@ -19,7 +17,7 @@
  *
  * You should have received a copy of the GNU General Public License 
  * along with this program; if not, write to the Free Software 
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
 
@@ -85,7 +83,7 @@ subs_t* rls_search_shtable(shtable_t htable,str callid,str to_tag,
 
 /******************************************************************************/
 
-int rls_delete_shtable(shtable_t htable,unsigned int hash_code,str to_tag)
+int rls_delete_shtable(shtable_t htable,unsigned int hash_code, subs_t* subs)
 {
   LM_ERR( "rls_delete_shtable shouldn't be called in RLS_DB_ONLY mode\n" );
   return(-1);
@@ -230,9 +228,11 @@ int delete_expired_subs_rlsdb( void )
 		}
 
 		pkg_free(rlsubs_did.s);
+		rlsubs_did.s = NULL;
 	}
 
 	rls_dbf.free_result(rls_db, result);
+	result = NULL;
 
 	if (rls_dbf.end_transaction)
 	{
