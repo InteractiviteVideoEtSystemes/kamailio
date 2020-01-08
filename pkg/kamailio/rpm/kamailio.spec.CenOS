@@ -55,7 +55,7 @@ interface.
 Summary:  MySQL connectivity for the Kamailio.
 Group:    System Environment/Daemons
 Requires: kamailio = %ver
-BuildPrereq:  mysql-devel zlib-devel
+Requires:  mysql-devel zlib-devel
 
 %description mysql
 The kamailio-mysql package contains MySQL database connectivity that you
@@ -67,7 +67,7 @@ entries.
 Summary:  MPOSTGRES connectivity for the Kamailio.
 Group:    System Environment/Daemons
 Requires: kamailio = %ver
-BuildPrereq:  postgresql-devel
+Requires:  postgresql-devel
 
 %description postgres
 The kamailio-postgres package contains Postgres database connectivity that you
@@ -79,7 +79,7 @@ entries.
 Summary:  UNIXODBC connectivity for Kamailio.
 Group:    System Environment/Daemons
 Requires: kamailio = %ver
-BuildPrereq:  unixODBC-devel
+Requires:  unixODBC-devel
 
 %description unixodbc
 The kamailio-unixodbc package contains UNIXODBC database connectivity support
@@ -99,7 +99,7 @@ The kamailio-utils package provides a set utility functions for Kamailio
 Summary:  CPL module (CPL interpreter engine) for Kamailio
 Group:    System Environment/Daemons
 Requires: kamailio = %ver
-BuildPrereq:  libxml2-devel
+Requires:  libxml2-devel
 
 %description cpl
 The kamailio-cpl package provides a CPL interpreter engine for Kamailio
@@ -109,7 +109,7 @@ The kamailio-cpl package provides a CPL interpreter engine for Kamailio
 Summary:  Kamailio radius support for AAA API.
 Group:    System Environment/Daemons
 Requires: kamailio = %ver
-BuildPrereq:  radiusclient-ng-devel
+Requires:  radiusclient-ng-devel
 
 %description radius
 The kamailio-radius package contains modules for radius authentication, group
@@ -120,7 +120,7 @@ membership and uri checking.
 Summary:  SNMP AgentX subagent module for Kamailio
 Group:    System Environment/Daemons
 Requires: kamailio = %ver, net-snmp-utils
-BuildPrereq:  lm_sensors-devel net-snmp-devel
+Requires:  lm_sensors-devel net-snmp-devel
 
 %description snmpstats
 The kamailio-snmpstats package snmpstats module for Kamailio.  This module acts
@@ -131,7 +131,7 @@ as an AgentX subagent which connects to a master agent.
 Summary:  sip presence user agent support for Kamailio
 Group:    System Environment/Daemons
 Requires: kamailio = %ver
-BuildPrereq:  libxml2-devel, curl-devel
+Requires:  libxml2-devel, curl-devel
 
 %description presence
 The kamailio-presence package contains a sip Presence Agent.
@@ -141,7 +141,7 @@ The kamailio-presence package contains a sip Presence Agent.
 Summary:  SIP2XMPP message translation support for Kamailio.
 Group:    System Environment/Daemons
 Requires: kamailio = %ver
-BuildPrereq:  expat-devel
+Requires:  expat-devel
 
 %description xmpp
 The kamailio-xmpp package contains a SIP to XMPP message translator.
@@ -151,7 +151,7 @@ The kamailio-xmpp package contains a SIP to XMPP message translator.
 Summary:  TLS transport protocol for Kamailio.
 Group:    System Environment/Daemons
 Requires: kamailio = %ver
-BuildPrereq:  openssl-devel
+Requires:  openssl-devel
 
 %description tls
 The kamailio-tls package contains the SIP TLSt transport mechanism for Kamailio.
@@ -161,7 +161,7 @@ The kamailio-tls package contains the SIP TLSt transport mechanism for Kamailio.
 Summary:  Routing module for Kamailio.
 Group:    System Environment/Daemons
 Requires: kamailio = %ver
-BuildPrereq:  libconfuse-devel
+Requires:  libconfuse-devel
 
 %description carrierroute
 The kamailio-carrierroute package contains a fast routing engine.
@@ -171,7 +171,7 @@ The kamailio-carrierroute package contains a fast routing engine.
 Summary:  Provides the purple module, a multi-protocol IM gateway.
 Group:    System Environment/Daemons
 Requires: kamailio = %ver
-BuildPrereq: libpurple-devel
+Requires: libpurple-devel
 
 %description purple
 The kamailio-purple package provides the purple module, a multi-protocol instant
@@ -182,7 +182,7 @@ messaging gateway module.
 Summary:  LDAP modules for Kamailio.
 Group:    System Environment/Daemons
 Requires: kamailio = %ver
-BuildPrereq: openldap-devel
+Requires: openldap-devel
 
 %description ldap
 The kamailio-ldap package provides the ldap and h350 modules for Kamailio,
@@ -194,7 +194,7 @@ data in an LDAP directory.
 #Summary:  Distributed hash table for Kamailio.
 #Group:    System Environment/Daemons
 #Requires: kamailio = %ver
-#BuildPrereq:  libmemcached-devel
+#Requires:  libmemcached-devel
 #
 #%description memcached
 #The kamailio-memcached package provides access to a distributed hash table memcached.
@@ -204,7 +204,7 @@ data in an LDAP directory.
 #Summary:  XMLRPC support for Kamailio's Management Interface.
 #Group:    System Environment/Daemons
 #Requires: kamailio = %ver
-#BuildPrereq:  libxml2-devel xmlrpc-c-devel
+#Requires:  libxml2-devel xmlrpc-c-devel
 #
 #%description xmlrpc
 #The kamailio-xmlrpc package provides the XMLRPC transport implementations for Kamailio's
@@ -215,7 +215,7 @@ data in an LDAP directory.
 Summary:  Perl extensions and database driver for Kamailio.
 Group:    System Environment/Daemons 
 Requires: kamailio = %ver
-BuildPrereq: mod_perl-devel
+Requires: mod_perl-devel
 
 %description perl
 The kamailio-perl package provides an interface for Kamailio to write Perl extensions and
@@ -226,7 +226,7 @@ the perlvdb database driver for Kamailio.
 Summary:  GeoIP extensions for Kamailio.
 Group:    System Environment/Daemons
 Requires: kamailio = %ver
-BuildPrereq: geoip-devel
+Requires: geoip-devel
 
 %description geoip
 The kamailio-geoip package provides a GeoIP interface for Kamailio
