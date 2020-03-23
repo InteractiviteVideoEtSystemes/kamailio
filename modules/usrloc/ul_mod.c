@@ -455,7 +455,7 @@ static int child_init(int _rank)
 			if (preload_udomain(ul_dbh, ptr->d) < 0) {
 				LM_ERR("child(%d): failed to preload domain '%.*s'\n",
 						_rank, ptr->name.len, ZSW(ptr->name.s));
-				return -1;
+				//return -1;
 			}
 			uldb_preload_attrs(ptr->d);
 		}
