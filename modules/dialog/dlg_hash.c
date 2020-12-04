@@ -14,8 +14,8 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License 
- * along with this program; if not, write to the Free Software 
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
@@ -377,12 +377,19 @@ void destroy_dlg(struct dlg_cell *dlg)
 	if (dlg->toroute_name.s)
 		shm_free(dlg->toroute_name.s);
 
-	
+
 	while (dlg->vars) {
 		var = dlg->vars;
 		dlg->vars = dlg->vars->next;
-		shm_free(var->key.s);
-		shm_free(var->value.s);
+		if (var->value.len <0)
+		{
+			LM_WARN("invalid dlg var %p with key %.*s\n",\
+					(_dlg),var->key.s);\
+		}
+		else
+		{	shm_free(var->key.s);
+			shm_free(var->value.s);
+		}
 		shm_free(var);
 	}
 
@@ -466,7 +473,7 @@ struct dlg_cell* build_new_dlg( str *callid, str *from_uri, str *to_uri,
 	dlg->to_uri.s = p;
 	dlg->to_uri.len = to_uri->len;
 	memcpy( p, to_uri->s, to_uri->len);
-	p += to_uri->len; 
+	p += to_uri->len;
 
 	dlg->req_uri.s = p;
 	dlg->req_uri.len = req_uri->len;
@@ -763,9 +770,9 @@ static inline struct dlg_cell* internal_get_dlg(unsigned int h_entry,
  * \brief Get dialog that correspond to CallId, From Tag and To Tag
  *
  * Get dialog that correspond to CallId, From Tag and To Tag.
- * See RFC 3261, paragraph 4. Overview of Operation:                 
- * "The combination of the To tag, From tag, and Call-ID completely  
- * defines a peer-to-peer SIP relationship between [two UAs] and is 
+ * See RFC 3261, paragraph 4. Overview of Operation:
+ * "The combination of the To tag, From tag, and Call-ID completely
+ * defines a peer-to-peer SIP relationship between [two UAs] and is
  * referred to as a dialog."
  * Note that the caller is responsible for decrementing (or reusing)
  * the reference counter by one again iff a dialog has been found.
@@ -1518,5 +1525,3 @@ error:
 	free_mi_tree(rpl_tree);
 	return NULL;
 }
-
-

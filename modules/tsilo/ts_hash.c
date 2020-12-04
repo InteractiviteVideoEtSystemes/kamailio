@@ -249,6 +249,7 @@ int insert_ts_urecord(str* ruri, ts_urecord_t** _r)
 	entry = &t_table->entries[sl];
 
 	if (entry->n <= 0) {
+		entry->n = 0;
 		entry->first = entry->last = *_r;
 	} else {
 		(*_r)->prev = entry->last;
@@ -287,8 +288,9 @@ void remove_ts_urecord(ts_urecord_t* _r)
 		entry->last = _r->prev;
 
 	update_stat(stored_ruris, -1);
+	if (entry-->n > 0)
+		entry->n--;
 
-	entry->n--;
 	free_ts_urecord(_r);
 
   return;
