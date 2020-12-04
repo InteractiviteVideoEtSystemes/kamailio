@@ -1,6 +1,6 @@
 %define name    kamailio
 %define ver     4.4.7
-%define rel     2
+%define rel     3
 %define _sharedir %{_prefix}/share
 
 %define MYSQL_MODULES           mysql
