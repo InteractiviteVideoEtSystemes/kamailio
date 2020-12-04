@@ -383,8 +383,7 @@ void destroy_dlg(struct dlg_cell *dlg)
 		dlg->vars = dlg->vars->next;
 		if (var->value.len <0)
 		{
-			LM_WARN("invalid dlg var %p with key %.*s\n",\
-					(_dlg),var->key.s);\
+			LM_WARN("invalid dlg var %p with key %.*s\n",dlg,var->key.s);
 		}
 		else
 		{	shm_free(var->key.s);
