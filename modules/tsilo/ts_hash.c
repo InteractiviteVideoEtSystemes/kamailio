@@ -288,9 +288,10 @@ void remove_ts_urecord(ts_urecord_t* _r)
 		entry->last = _r->prev;
 
 	update_stat(stored_ruris, -1);
-	if (entry-->n > 0)
+	if (entry->n > 0)
+	{
 		entry->n--;
-
+	}
 	free_ts_urecord(_r);
 
   return;
