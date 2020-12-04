@@ -55,7 +55,7 @@ interface.
 Summary:  MySQL connectivity for the Kamailio.
 Group:    System Environment/Daemons
 Requires: kamailio = %ver
-Requires:  mysql-devel zlib-devel
+Requires:  MariaDB-devel zlib-devel
 
 %description mysql
 The kamailio-mysql package contains MySQL database connectivity that you
