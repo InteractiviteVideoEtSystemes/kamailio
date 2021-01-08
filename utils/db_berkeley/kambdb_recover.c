@@ -336,14 +336,14 @@ int recover(char* jfn)
 		return 2;
 	}
 	
-	tp  = tbc->dtp;
-	
-	if(!tbc || !tp)
+	if(!tbc || !tbc->dtp)
 	{
 		fprintf(stderr, "[recover]: FAILED to get find metadata for : %s.\n", tn);
 		fclose(fp);
 		return 3;
 	}
+
+	tp  = tbc->dtp;
 	
 	while ( fgets(line , MAX_ROW_SIZE, fp) != NULL )
 	{
@@ -816,11 +816,11 @@ table_p create_table(char *_s)
 */
 int load_metadata_columns(table_p _tp, char* line)
 {
-	int ret,n,len;
+	int n,len;
 	char *s = NULL;
 	char cn[64], ct[16];
 	column_p col;
-	ret = n = len = 0;
+	n = len = 0;
 	
 	if(!_tp) return -1;
 	if(_tp->ncols!=0) return 0;

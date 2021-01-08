@@ -1,8 +1,7 @@
-INSERT INTO version (table_name, table_version) values ('purplemap','1');
 CREATE TABLE purplemap (
     id NUMBER(10) PRIMARY KEY,
-    sip_user VARCHAR2(128),
-    ext_user VARCHAR2(128),
+    sip_user VARCHAR2(255),
+    ext_user VARCHAR2(255),
     ext_prot VARCHAR2(16),
     ext_pass VARCHAR2(64)
 );
@@ -15,3 +14,5 @@ END purplemap_tr;
 /
 BEGIN map2users('purplemap'); END;
 /
+INSERT INTO version (table_name, table_version) values ('purplemap','1');
+

@@ -1,8 +1,7 @@
-INSERT INTO version (table_name, table_version) values ('rls_presentity','1');
 CREATE TABLE rls_presentity (
     id NUMBER(10) PRIMARY KEY,
     rlsubs_did VARCHAR2(255),
-    resource_uri VARCHAR2(128),
+    resource_uri VARCHAR2(255),
     content_type VARCHAR2(255),
     presence_state BLOB,
     expires NUMBER(10),
@@ -24,29 +23,30 @@ CREATE INDEX rls_presentity_rlsubs_idx  ON rls_presentity (rlsubs_did);
 CREATE INDEX rls_presentity_updated_idx  ON rls_presentity (updated);
 CREATE INDEX rls_presentity_expires_idx  ON rls_presentity (expires);
 
-INSERT INTO version (table_name, table_version) values ('rls_watchers','3');
+INSERT INTO version (table_name, table_version) values ('rls_presentity','1');
+
 CREATE TABLE rls_watchers (
     id NUMBER(10) PRIMARY KEY,
-    presentity_uri VARCHAR2(128),
+    presentity_uri VARCHAR2(255),
     to_user VARCHAR2(64),
     to_domain VARCHAR2(64),
     watcher_username VARCHAR2(64),
     watcher_domain VARCHAR2(64),
     event VARCHAR2(64) DEFAULT 'presence',
     event_id VARCHAR2(64),
-    to_tag VARCHAR2(64),
-    from_tag VARCHAR2(64),
+    to_tag VARCHAR2(128),
+    from_tag VARCHAR2(128),
     callid VARCHAR2(255),
     local_cseq NUMBER(10),
     remote_cseq NUMBER(10),
-    contact VARCHAR2(128),
+    contact VARCHAR2(255),
     record_route CLOB,
     expires NUMBER(10),
     status NUMBER(10) DEFAULT 2 NOT NULL,
     reason VARCHAR2(64),
     version NUMBER(10) DEFAULT 0 NOT NULL,
     socket_info VARCHAR2(64),
-    local_contact VARCHAR2(128),
+    local_contact VARCHAR2(255),
     from_user VARCHAR2(64),
     from_domain VARCHAR2(64),
     updated NUMBER(10),
@@ -64,4 +64,6 @@ BEGIN map2users('rls_watchers'); END;
 CREATE INDEX ORA_rls_watchers_update  ON rls_watchers (watcher_username, watcher_domain, event);
 CREATE INDEX ORA_rls_watchers_expires  ON rls_watchers (expires);
 CREATE INDEX rls_watchers_updated_idx  ON rls_watchers (updated);
+
+INSERT INTO version (table_name, table_version) values ('rls_watchers','3');
 
