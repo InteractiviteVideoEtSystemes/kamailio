@@ -1,6 +1,6 @@
 %define name    kamailio
 %define ver     4.4.7
-%define rel     3
+%define rel     4
 %define _sharedir %{_prefix}/share
 
 %define MYSQL_MODULES           mysql
@@ -242,13 +242,9 @@ json string handling and RPC modules for Kamailio.
 
 
 %prep
-#%setup -n %{name}-%{ver}
-svn co http://svn.ives.fr/svn-libs-dev/kamailio/tags/%ver/ %{name}-%{ver}
-cp $RPM_BUILD_DIR/kamailio-%{ver}/pkg/kamailio/rpm/kamailio.init $RPM_SOURCE_DIR/kamailio.init
-cp $RPM_BUILD_DIR/kamailio-%{ver}/pkg/kamailio/rpm/kamailio.default $RPM_SOURCE_DIR/kamailio.default
 
 %build
-cd %{name}-%{ver}
+cd $RPM_SOURCE_DIR/%name
 export TLS_CORE=1
 export TLS_HOOKS=1
 make FLAVOUR=kamailio cfg prefix=/usr cfg_prefix=$RPM_BUILD_ROOT basedir=$RPM_BUILD_ROOT cfg_target=/%{_sysconfdir}/kamailio/ modules_dirs="modules modules_k"
@@ -281,7 +277,7 @@ make every-module group_include="k%JSON_MODULES"
 
 export TLS_CORE=1
 export TLS_HOOKS=1
-cd %{name}-%{ver}
+cd $RPM_SOURCE_DIR/%name
 make install
 make install-modules-all skip_modules="iptrtpproxy" group_include="kstandard" ENABLE_RADIUS_ACC=1
 make install-modules-all group_include="koutbound"

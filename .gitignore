@@ -1,0 +1,13 @@
+*.o
+*.d
+*.lst
+*.so
+*.so.0
+*.so.0.1
+*.so.1
+*.so.1.0
+*.rpm
+cfg.tab.c
+cfg.tab.h
+kamailio
+lex.yy.c
