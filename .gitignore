@@ -6,6 +6,7 @@
 *.so.0.1
 *.so.1
 *.so.1.0
+*.so.1.2
 *.rpm
 cfg.tab.c
 cfg.tab.h
