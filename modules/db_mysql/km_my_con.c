@@ -28,7 +28,7 @@
 
 #include "km_my_con.h"
 #include "km_db_mysql.h"
-#include <mysql_version.h>
+#include <mysql.h>
 #include "../../mem/mem.h"
 #include "../../dprint.h"
 #include "../../ut.h"
@@ -128,10 +128,18 @@ struct my_con* db_mysql_new_connection(const struct db_id* id)
 		goto err;
 	}
 	/* force reconnection if enabled */
+#if MYSQL_VERSION_ID > 50012
+	/* set reconnect flag if enabled */
+	if (db_mysql_auto_reconnect) {
+		rec = 1;
+		mysql_options(ptr->con, MYSQL_OPT_RECONNECT, (const void*)&rec);
+	}
+#else
 	if (db_mysql_auto_reconnect)
 		ptr->con->reconnect = 1;
-	else 
+	else
 		ptr->con->reconnect = 0;
+#endif
 
 	LM_DBG("connection type is %s\n", mysql_get_host_info(ptr->con));
 	LM_DBG("protocol version is %d\n", mysql_get_proto_info(ptr->con));
