@@ -39,6 +39,7 @@ pipeline {
                steps {
 	           sh """
 		   ./install.ksh prereq
+		   rm *.rpm
                    ./install.ksh rpm nosign
 	           """
               }
