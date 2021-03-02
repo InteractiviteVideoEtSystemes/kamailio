@@ -181,9 +181,19 @@ void free_cell_helper(tm_cell_t* dead_cell, int silent, const char *fname, unsig
 		if (b!=0 && b!=BUSY_BUFFER)
 			shm_free_unsafe( b );
 		rpl=dead_cell->uac[i].reply;
-		if (rpl && rpl!=FAKED_REPLY && rpl->msg_flags&FL_SHM_CLONE) {
-			sip_msg_free_unsafe( rpl );
-		}
+		if (rpl && rpl!=FAKED_REPLY && rpl->msg_flags&FL_SHM_CLONE ) {
+			
+			switch ((rpl->first_line).type) {
+				case SIP_REQUEST:
+				case SIP_REPLY:
+					sip_msg_free_unsafe( rpl );
+					break;
+				default:
+					LM_ERR("Unknown or invalid SIP message type: %d\n", rpl->first_line.type);
+				break;
+			}
+		}		
+	}
 #ifdef USE_DNS_FAILOVER
 		if (dead_cell->uac[i].dns_h.a){
 			DBG("branch %d -> dns_h.srv (%.*s) ref=%d,"
