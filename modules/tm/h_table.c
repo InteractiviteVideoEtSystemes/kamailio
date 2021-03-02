@@ -193,7 +193,7 @@ void free_cell_helper(tm_cell_t* dead_cell, int silent, const char *fname, unsig
 				break;
 			}
 		}		
-	}
+	
 #ifdef USE_DNS_FAILOVER
 		if (dead_cell->uac[i].dns_h.a){
 			DBG("branch %d -> dns_h.srv (%.*s) ref=%d,"
