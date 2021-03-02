@@ -189,7 +189,7 @@ void free_cell_helper(tm_cell_t* dead_cell, int silent, const char *fname, unsig
 					sip_msg_free_unsafe( rpl );
 					break;
 				default:
-					LM_ERR("Unknown or invalid SIP message type: %d\n", rpl->first_line.type);
+					LM_ERR("TM:Unknown or invalid SIP message type: %d , not freeing the sip message deliberatly.\n", rpl->first_line.type);
 				break;
 			}
 		}		
