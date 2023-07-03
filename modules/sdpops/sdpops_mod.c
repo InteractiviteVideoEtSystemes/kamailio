@@ -149,7 +149,7 @@ int sdp_locate_line(sip_msg_t* msg, char *pos, str *aline)
 	char *bend;
 
 	p = pos;
-	while( *p != '\n' )
+	while( *p != '\n' && p > msg->buf )
 	{
 		p--;
 	}
