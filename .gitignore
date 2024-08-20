@@ -12,3 +12,7 @@ cfg.tab.c
 cfg.tab.h
 kamailio
 lex.yy.c
+autover.h
+config.mak
+modules/app_perl/kamailioxs.c
+utils/kamcmd/kamcmd
