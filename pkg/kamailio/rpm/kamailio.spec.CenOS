@@ -1,5 +1,5 @@
 %define name    kamailio
-%define ver     4.4.9
+%define ver     4.4.10
 %define rel     1.ives%{?dist}
 %define _sharedir %{_prefix}/share
 
@@ -213,7 +213,7 @@ data in an LDAP directory.
 
 %package  perl
 Summary:  Perl extensions and database driver for Kamailio.
-Group:    System Environment/Daemons 
+Group:    System Environment/Daemons
 Requires: kamailio = %ver
 Requires: mod_perl-devel
 
@@ -241,7 +241,16 @@ BuildRequires:	epel-release, json-c-devel, libevent-devel
 json string handling and RPC modules for Kamailio.
 
 
-%prep
+%package	    jsonrpc-s
+Summary:	    JSON-RPC server over HTTP
+Group:		    System Environment/Daemons
+Requires:	    kamailio = %ver
+
+%description	jsonrpc-s
+This module provides a JSON-RPC v2 server over HTTP implementation,
+tailored for the needs of Kamailio.
+It implements the Kamailio RPC interface over JSON-RPC.
+
 
 %build
 cd $RPM_SOURCE_DIR/%name
@@ -271,6 +280,7 @@ make every-module group_include="k%PERL_MODULES"
 make every-module group_include="k%PYTHON_MODULES"
 make every-module group_include="k%GEOIP_MODULES"
 make every-module group_include="k%JSON_MODULES"
+make every-module group_include="kjsonrpc-s"
 
 %install
 [ "$RPM_BUILD_ROOT" != "/" ] && rm -rf "$RPM_BUILD_ROOT"
@@ -301,6 +311,7 @@ make install-modules-all group_include="k%PERL_MODULES"
 make install-modules-all group_include="k%PYTHON_MODULES"
 make install-modules-all group_include="k%GEOIP_MODULES"
 make install-modules-all group_include="k%JSON_MODULES"
+make install-modules-all group_include="kjsonrpc-s"
 
 mkdir -p $RPM_BUILD_ROOT/%{_sysconfdir}/rc.d/init.d
 install -m755 $RPM_SOURCE_DIR/kamailio.init \
@@ -319,16 +330,16 @@ install -m755 $RPM_SOURCE_DIR/kamailio.default \
 
 %clean
 rm -rf "$RPM_BUILD_ROOT"
-                
-%post           
+
+%post
 /sbin/chkconfig --add kamailio
 
-%preun          
+%preun
 if [ $1 = 0 ]; then
     /sbin/service kamailio stop > /dev/null 2>&1
     /sbin/chkconfig --del kamailio
 fi
-                
+
 
 %files
 %defattr(-,root,root)
@@ -453,7 +464,6 @@ fi
 %doc %{_docdir}/kamailio/modules/README.timer
 %doc %{_docdir}/kamailio/modules/README.tmrec
 %doc %{_docdir}/kamailio/modules/README.xhttp_rpc
-%doc %{_docdir}/kamailio/modules/README.jsonrpc-c
 %doc %{_docdir}/kamailio/modules/README.tsilo
 
 %dir %{_sysconfdir}/kamailio
@@ -817,6 +827,11 @@ fi
 %{_libdir}/kamailio/modules/json.so
 %{_libdir}/kamailio/modules/jsonrpc-c.so
 
+%files		jsonrpc-s
+%defattr(-,root,root)
+%doc %{_docdir}/kamailio/modules/README.jsonrpc-s
+%{_libdir}/kamailio/modules/jsonrpc-s.so
+
 
 %changelog
 * Thu Nov 21 2019 Emmanuel BUU <emmanuel.buu@ives.fr>
@@ -829,7 +844,7 @@ fi
 - release 6
 
 * Tue Feb 13 2018 Thomas CARVELLO <thomas.carvello@ives.fr>
-- Fixed issue with socket selection on forwarding ACK message 
+- Fixed issue with socket selection on forwarding ACK message
 * Sat Oct 1 2016 Emmanuel BUU <emmanuel.buu@ives.fr>
 - Backported dialog module from 4.1.9
 * Fri Oct 2 2015 Emmanuel BUU <emmanuel.buu@ives.fr>

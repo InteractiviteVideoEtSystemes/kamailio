@@ -132,7 +132,7 @@ mod_list_sqlite=db_sqlite
 mod_list_oracle=db_oracle
 
 # - modules depending on json library
-mod_list_json=json jsonrpc-c
+mod_list_json=json jsonrpc-c jsonrpc-s
 
 # - modules depending on redis library
 mod_list_redis=ndb_redis
@@ -200,7 +200,7 @@ module_group_standard=$(mod_list_basic) $(mod_list_extra) \
 					  $(mod_list_devel)
 
 # Modules in this group are considered a standard part due to
-# widespread usage, but they have dependencies that must be satisfied for 
+# widespread usage, but they have dependencies that must be satisfied for
 # compilation (e.g., lcr, radius, presence, tls, ...).
 module_group_common=$(mod_list_db) $(mod_list_dbuid) \
 					$(mod_list_pcre) $(mod_list_radius) \
