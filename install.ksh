@@ -13,16 +13,15 @@ function create_rpm
 {
     #Cree l'environnement de creation de package
     #Creation des macros rpmbuild
-    rm ~/.rpmmacros
-    touch ~/.rpmmacros
-    echo "%_topdir" $PWD"/rpmbuild" >> ~/.rpmmacros
+    rm -f ~/.rpmmacros
+    echo "%_topdir" $PWD"/rpmbuild" > ~/.rpmmacros
     echo "%_tmppath %{_topdir}/TMP" >> ~/.rpmmacros
     echo "%_signature gpg" >> ~/.rpmmacros
     echo "%_gpg_name IVeSkey" >> ~/.rpmmacros
     echo "%_gpg_path" $PWD"/gnupg" >> ~/.rpmmacros
     echo "%vendor IVeS" >> ~/.rpmmacros
     #Import de la clef gpg IVeS
-    svn export https://svn.ives.fr/svn-libs-dev/gnupg
+    #svn export https://svn.ives.fr/svn-libs-dev/gnupg
     mkdir -p rpmbuild
     mkdir -p rpmbuild/SOURCES
     mkdir -p rpmbuild/SPECS
@@ -35,7 +34,7 @@ function create_rpm
     mkdir -p rpmbuild/RPMS/i686
     mkdir -p rpmbuild/RPMS/i586
     mkdir -p rpmbuild/RPMS/x86_64
-    #Recuperation de la description du package 
+    #Recuperation de la description du package
     cd ./rpmbuild/SPECS/
     cp ../../pkg/kamailio/rpm/kamailio.spec.CenOS ${PROJET}.spec
     cd ../SOURCES
@@ -78,12 +77,13 @@ case $1 in
   		create_rpm $2;;
 
 	"prereq")
-		sudo yum -y install postgresql-devel unixODBC-devel libpurple-devel mod_perl-devel lua-devel geoip-devel make flex bison pcre-devel mariadb-devel zlib-devel libxml2-devel radiusclient-ng-devel lm_sensors-devel net-snmp-devel libxml2-devel, curl-devel expat-devel openssl-devel libconfuse-devel openldap-devel libunistring-devel
-		sudo yum -y install json-c-devel libevent-devel python ;;
+        # On clean and new CentOS 6, it's "MariaDB-devel" and not "mariadb-devel", case sensitive.
+		sudo yum -y install json-c-devel libevent-devel python postgresql-devel unixODBC-devel libpurple-devel mod_perl-devel lua-devel geoip-devel make flex bison pcre-devel mariadb-devel zlib-devel radiusclient-ng-devel lm_sensors-devel net-snmp-devel libxml2-devel curl-devel expat-devel openssl-devel libconfuse-devel openldap-devel libunistring-devel;;
   	*)
-  		echo "usage: install.ksh [options]" 
+  		echo "usage: install.ksh [options]"
   		echo "options :"
   		echo "  rpm		Generation d'un package rpm"
   		echo "  prepreq		Install des prerequis"
-  		echo "  clean		Nettoie tous les fichiers ";;
+  		echo "  clean		Nettoie tous les fichiers "
+        ;;
 esac
